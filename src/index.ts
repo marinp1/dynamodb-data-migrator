@@ -18,6 +18,8 @@ const targetConfiguration: Configuration = {
 };
 
 const tableName = 'ReminderSubscriptions';
+const temporaryTableName = 'dynamodb-migrator-temporary-table';
+const dynamoDbLocalUri = 'http://localhost:8000';
 
 const configureAWS = (type: 'source' | 'local' | 'target') => {
   switch (type) {
@@ -77,25 +79,31 @@ const parseIndexResponse = (
   // 0. Delete local temporary table
   configureAWS('local');
   const localClient = new AWS.DynamoDB({
-    endpoint: 'http://localhost:8000',
+    endpoint: dynamoDbLocalUri,
   });
 
-  localClient.deleteTable(
-    {
-      TableName: 'dynamodb-migrator-temporar2y-table',
-    },
-    (err, data) => {
-      if (err) {
-        if (err.code !== 'ResourceNotFoundException') {
-          console.error(err);
-        }
-      } else {
-        console.log(
-          'Deleted existing temporary table with name',
-          data.TableDescription?.TableName
-        );
-      }
+  const {
+    $response: deleteResult,
+    TableDescription: deletedTable,
+  } = await localClient
+    .deleteTable({
+      TableName: temporaryTableName,
+    })
+    .promise();
+
+  if (deleteResult.error) {
+    if (deleteResult.error.code !== 'ResourceNotFoundException') {
+      console.error(deleteResult.error);
     }
+  }
+
+  if (!deletedTable) {
+    console.error('Could not parse deleted table');
+  }
+
+  console.log(
+    'Deleted existing temporary table with name',
+    deletedTable?.TableName
   );
 
   // 1. DescribeTable
@@ -132,7 +140,7 @@ const parseIndexResponse = (
   } = await localClient
     .createTable({
       AttributeDefinitions: tableDescription.AttributeDefinitions,
-      TableName: 'dynamodb-migrator-temporary-table',
+      TableName: temporaryTableName,
       KeySchema: tableDescription.KeySchema,
       LocalSecondaryIndexes: parseIndexResponse(
         tableDescription.LocalSecondaryIndexes
