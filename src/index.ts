@@ -1,7 +1,4 @@
-import {Config as AWSConfig} from 'aws-sdk/lib/config';
-import {SharedIniFileCredentials} from 'aws-sdk/lib/credentials/shared_ini_file_credentials';
-
-import {DocumentClient} from 'aws-sdk/clients/dynamodb';
+import * as AWS from 'aws-sdk';
 
 interface Configuration {
   region: string;
@@ -15,17 +12,15 @@ const sourceConfiguration = {
 
 const tableName = 'ReminderSubscriptions';
 
-const config = new AWSConfig();
-
 const {region, profile} = sourceConfiguration;
 
-config.update({
+AWS.config.update({
   region,
-  credentials: new SharedIniFileCredentials({profile}),
+  credentials: new AWS.SharedIniFileCredentials({profile}),
 });
 
 (async () => {
-  const client = new DocumentClient();
+  const client = new AWS.DynamoDB.DocumentClient();
   const {Items, Count, LastEvaluatedKey} = await client
     .scan({
       TableName: tableName,
