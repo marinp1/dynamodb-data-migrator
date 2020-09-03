@@ -74,6 +74,30 @@ const parseIndexResponse = (
 };
 
 (async () => {
+  // 0. Delete local temporary table
+  configureAWS('local');
+  const localClient = new AWS.DynamoDB({
+    endpoint: 'http://localhost:8000',
+  });
+
+  localClient.deleteTable(
+    {
+      TableName: 'dynamodb-migrator-temporar2y-table',
+    },
+    (err, data) => {
+      if (err) {
+        if (err.code !== 'ResourceNotFoundException') {
+          console.error(err);
+        }
+      } else {
+        console.log(
+          'Deleted existing temporary table with name',
+          data.TableDescription?.TableName
+        );
+      }
+    }
+  );
+
   // 1. DescribeTable
   configureAWS('source');
   const sourceClient = new AWS.DynamoDB();
@@ -101,9 +125,6 @@ const parseIndexResponse = (
   }
 
   configureAWS('local');
-  const localClient = new AWS.DynamoDB({
-    endpoint: 'http://localhost:8000',
-  });
 
   const {
     TableDescription: createdTableDescription,
