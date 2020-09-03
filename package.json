@@ -18,7 +18,6 @@
   "author": "Patrik Marin",
   "license": "MIT",
   "dependencies": {
-    "@aws-sdk/client-dynamodb-v2-node": "0.1.0-preview.2",
     "aws-sdk": "^2.745.0"
   },
   "devDependencies": {
