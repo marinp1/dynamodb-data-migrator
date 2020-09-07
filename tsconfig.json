@@ -67,6 +67,7 @@
   },
   "include": [
     "src/**/*.ts",
-    "test/**/*.ts"
-  ]
+    "test/**/*.ts",
+    "node_modules/@types",
+  ],
 }
