@@ -100,13 +100,26 @@ export const getItemsFromSourceTable = async (
       itemStream.end();
     });
 
-/*
-const copyItemsToTemporaryTable = async (
-  items: DynamoDB.AttributeMap[]
+export const copyItemsToTemporaryTable = async (
+  items: DynamoDB.ItemList
 ): Promise<void> => {
   return new Promise((resolve, reject) => {
-      return getDynamoDB('local').transactWriteItems(,
-    return resolve();
+    return getDynamoDB('local').transactWriteItems(
+      {
+        TransactItems: items.map(item => ({
+          Put: {
+            Item: item,
+            TableName: temporaryTableName,
+          },
+        })),
+      },
+      err => {
+        if (err) {
+          return reject(new Error('Failed to copy items to table'));
+        }
+        console.log('Inserted', items.length, 'items to', temporaryTableName);
+        return resolve();
+      }
+    );
   });
 };
-*/

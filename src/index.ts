@@ -1,4 +1,5 @@
 import through2 from 'through2';
+import {DynamoDB} from 'aws-sdk';
 import {convertDescriptionToInput} from './utils';
 
 import {
@@ -6,8 +7,8 @@ import {
   describeSourceTable,
   createTemporaryTable,
   getItemsFromSourceTable,
+  copyItemsToTemporaryTable,
 } from './operations';
-import {DynamoDB} from 'aws-sdk';
 
 const temporaryTableName = 'dynamodb-migrator-temporary-table';
 
@@ -32,15 +33,16 @@ export const main = async () => {
 
     // Start listening stream input
     itemStream.on('data', (chunk: DynamoDB.ItemList) => {
-      console.log(chunk);
+      copyItemsToTemporaryTable(chunk);
     });
 
     itemStream.on('error', e => {
       console.log(e);
+      throw new Error('Failed to read data from source table');
     });
 
     itemStream.on('end', () => {
-      console.log('end');
+      console.log('Copied all items from source to temporary table');
     });
 
     // 3. Get items from source table and add them to stream

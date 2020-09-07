@@ -20,36 +20,36 @@ const dynamoDbLocalUri = 'http://localhost:8000';
 const configureAWS = (type: 'source' | 'local' | 'target') => {
   switch (type) {
     case 'source':
-      return AWS.config.update({
+      return {
         region: sourceConfiguration.region,
         credentials: new AWS.SharedIniFileCredentials({
           profile: sourceConfiguration.profile,
         }),
         accessKeyId: undefined,
         secretAccessKey: undefined,
-      });
+      };
     case 'target':
-      return AWS.config.update({
+      return {
         region: targetConfiguration.region,
         credentials: new AWS.SharedIniFileCredentials({
           profile: targetConfiguration.profile,
         }),
         accessKeyId: undefined,
         secretAccessKey: undefined,
-      });
+      };
     case 'local':
-      return AWS.config.update({
+      return {
         region: 'local',
         credentials: undefined,
         accessKeyId: 'local',
         secretAccessKey: 'local',
-      });
+      };
   }
 };
 
 export const getDynamoDB = (type: 'source' | 'local' | 'target') => {
-  configureAWS(type);
   return new AWS.DynamoDB({
+    ...configureAWS(type),
     endpoint: type === 'local' ? dynamoDbLocalUri : undefined,
   });
 };
