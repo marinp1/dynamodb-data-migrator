@@ -11,16 +11,29 @@ const parseIndexResponse = (
   indexes: undefined | Array<Partial<RequiredIndexType> & {[x: string]: any}>
 ): RequiredIndexType[] | undefined => {
   return indexes
-    ? indexes.map(({IndexName, KeySchema, Projection}) => {
-        if (!IndexName || !KeySchema || !Projection) {
-          throw new Error('Index invalid!');
+    ? indexes.map(
+        ({IndexName, KeySchema, Projection, ProvisionedThroughput}) => {
+          if (!IndexName || !KeySchema || !Projection) {
+            throw new Error('Index invalid!');
+          }
+
+          const index = {
+            IndexName,
+            KeySchema,
+            Projection,
+          };
+
+          return ProvisionedThroughput
+            ? {
+                ...index,
+                ProvisionedThroughput: {
+                  ReadCapacityUnits: 1000,
+                  WriteCapacityUnits: 1000,
+                },
+              }
+            : index;
         }
-        return {
-          IndexName,
-          KeySchema,
-          Projection,
-        };
-      })
+      )
     : undefined;
 };
 
@@ -42,8 +55,8 @@ export const convertDescriptionToInput = (
       tableDescription.GlobalSecondaryIndexes
     ),
     ProvisionedThroughput: {
-      ReadCapacityUnits: 40000,
-      WriteCapacityUnits: 40000,
+      ReadCapacityUnits: 20000,
+      WriteCapacityUnits: 20000,
     },
   };
 };

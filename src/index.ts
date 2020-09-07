@@ -33,20 +33,26 @@ export const main = async () => {
 
     // Start listening stream input
     itemStream.on('data', (chunk: DynamoDB.ItemList) => {
+      // TODO: Transform data?
+      // 4. Add items to table
       copyItemsToTemporaryTable(chunk);
     });
 
     itemStream.on('error', e => {
       console.log(e);
-      throw new Error('Failed to read data from source table');
+      throw new Error('Failed to scan data from source table');
     });
 
+    /*
     itemStream.on('end', () => {
       console.log('Copied all items from source to temporary table');
     });
+    */
 
     // 3. Get items from source table and add them to stream
     await getItemsFromSourceTable(itemStream);
+
+    // TODO: 5. Validate number of entries in table
 
     return 0;
   } catch (e) {

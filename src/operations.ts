@@ -1,8 +1,9 @@
 import DynamoDB, {Key} from 'aws-sdk/clients/dynamodb';
+import lodashChunk from 'lodash.chunk';
 import {Transform} from 'stream';
 import {getDynamoDB} from './config';
 
-const tableName = 'ReminderSubscriptions';
+const tableName = 'toggl-2-toggl-dev-TimeEntries';
 const temporaryTableName = 'dynamodb-migrator-temporary-table';
 
 export const deleteTemporaryTable = async (): Promise<void> =>
@@ -23,18 +24,19 @@ export const describeSourceTable = async (): Promise<
   new Promise((resolve, reject) =>
     getDynamoDB('source').describeTable(
       {TableName: tableName},
-      (err, {Table}) => {
+      (err, response) => {
         if (err) {
           console.error(err);
           return reject(new Error('Failed to describe source table'));
         }
-        if (!Table) {
+        if (!response.Table) {
+          console.info(response);
           return reject(
             new Error('Failed to get description for source table!')
           );
         }
         console.log('Fetched description for table', tableName);
-        return resolve(Table);
+        return resolve(response.Table);
       }
     )
   );
@@ -43,12 +45,12 @@ export const createTemporaryTable = async (
   tableInput: AWS.DynamoDB.CreateTableInput
 ): Promise<void> =>
   new Promise((resolve, reject) =>
-    getDynamoDB('local').createTable(tableInput, (err, {TableDescription}) => {
-      if (!TableDescription || err) {
+    getDynamoDB('local').createTable(tableInput, (err, response) => {
+      if (!response || !response.TableDescription || err) {
         console.error(err);
         return reject(new Error('Failed to create table'));
       }
-      console.log('Created temporary table', TableDescription.TableName);
+      console.log('Created temporary table', tableInput.TableName);
       return resolve();
     })
   );
@@ -101,25 +103,32 @@ export const getItemsFromSourceTable = async (
     });
 
 export const copyItemsToTemporaryTable = async (
-  items: DynamoDB.ItemList
-): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    return getDynamoDB('local').transactWriteItems(
-      {
-        TransactItems: items.map(item => ({
-          Put: {
-            Item: item,
-            TableName: temporaryTableName,
-          },
-        })),
-      },
-      err => {
-        if (err) {
-          return reject(new Error('Failed to copy items to table'));
-        }
-        console.log('Inserted', items.length, 'items to', temporaryTableName);
-        return resolve();
-      }
-    );
+  allItems: DynamoDB.ItemList
+): Promise<void> =>
+  Promise.all(
+    // AWS Supports at most 25 items per chunk
+    lodashChunk(allItems, 25).map(
+      async items =>
+        new Promise((resolve: () => void, reject) =>
+          getDynamoDB('local').transactWriteItems(
+            {
+              TransactItems: items.map(item => ({
+                Put: {
+                  Item: item,
+                  TableName: temporaryTableName,
+                },
+              })),
+            },
+            err => {
+              if (err) {
+                console.error(err);
+                return reject(new Error('Failed to copy items to table'));
+              }
+              return resolve();
+            }
+          )
+        )
+    )
+  ).then(() => {
+    console.log('Copied', allItems.length, 'to', temporaryTableName);
   });
-};
