@@ -1,177 +1,115 @@
-import * as AWS from 'aws-sdk';
-
-import {IndexName, KeySchema, Projection} from 'aws-sdk/clients/dynamodb';
-
-interface Configuration {
-  region: string;
-  profile: string;
-}
-
-const sourceConfiguration: Configuration = {
-  region: 'eu-central-1',
-  profile: 'patrikmarin',
-};
-
-const targetConfiguration: Configuration = {
-  region: 'eu-central-1',
-  profile: 'patrikmarin',
-};
+import {getDynamoDB} from './config';
+import {convertDescriptionToInput} from './utils';
+import DynamoDB, {Key} from 'aws-sdk/clients/dynamodb';
 
 const tableName = 'ReminderSubscriptions';
 const temporaryTableName = 'dynamodb-migrator-temporary-table';
-const dynamoDbLocalUri = 'http://localhost:8000';
 
-const configureAWS = (type: 'source' | 'local' | 'target') => {
-  switch (type) {
-    case 'source':
-      return AWS.config.update({
-        region: sourceConfiguration.region,
-        credentials: new AWS.SharedIniFileCredentials({
-          profile: sourceConfiguration.profile,
-        }),
-        accessKeyId: undefined,
-        secretAccessKey: undefined,
-      });
-    case 'target':
-      return AWS.config.update({
-        region: targetConfiguration.region,
-        credentials: new AWS.SharedIniFileCredentials({
-          profile: targetConfiguration.profile,
-        }),
-        accessKeyId: undefined,
-        secretAccessKey: undefined,
-      });
-    case 'local':
-      return AWS.config.update({
-        region: 'local',
-        credentials: undefined,
-        accessKeyId: 'local',
-        secretAccessKey: 'local',
-      });
-  }
-};
-
-type RequiredIndexType = {
-  IndexName: IndexName;
-  KeySchema: KeySchema;
-  Projection: Projection;
-};
-
-const parseIndexResponse = (
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  indexes: undefined | Array<Partial<RequiredIndexType> & {[x: string]: any}>
-): RequiredIndexType[] | undefined => {
-  return indexes
-    ? indexes.map(({IndexName, KeySchema, Projection}) => {
-        if (!IndexName || !KeySchema || !Projection) {
-          throw new Error('Index invalid!');
-        }
-        return {
-          IndexName,
-          KeySchema,
-          Projection,
-        };
-      })
-    : undefined;
-};
-
-(async () => {
-  // 0. Delete local temporary table
-  configureAWS('local');
-  const localClient = new AWS.DynamoDB({
-    endpoint: dynamoDbLocalUri,
-  });
-
-  const {
-    $response: deleteResult,
-    TableDescription: deletedTable,
-  } = await localClient
-    .deleteTable({
-      TableName: temporaryTableName,
+const deleteTemporaryTable = async (): Promise<void> =>
+  new Promise((resolve, reject) =>
+    getDynamoDB('local').deleteTable({TableName: temporaryTableName}, err => {
+      if (err && err.code !== 'ResourceNotFoundException') {
+        console.error(err);
+        return reject(new Error('Temporary table deletion failed!'));
+      }
+      console.log('Deleted temporary table', temporaryTableName);
+      return resolve();
     })
-    .promise();
-
-  if (deleteResult.error) {
-    if (deleteResult.error.code !== 'ResourceNotFoundException') {
-      console.error(deleteResult.error);
-    }
-  }
-
-  if (!deletedTable) {
-    console.error('Could not parse deleted table');
-  }
-
-  console.log(
-    'Deleted existing temporary table with name',
-    deletedTable?.TableName
   );
 
-  // 1. DescribeTable
-  configureAWS('source');
-  const sourceClient = new AWS.DynamoDB();
+const describeSourceTable = async (): Promise<AWS.DynamoDB.TableDescription> =>
+  new Promise((resolve, reject) =>
+    getDynamoDB('source').describeTable(
+      {TableName: tableName},
+      (err, {Table}) => {
+        if (err) {
+          console.error(err);
+          return reject(new Error('Temporary table deletion failed!'));
+        }
+        if (!Table) {
+          return reject(
+            new Error('Failed to get description for source table!')
+          );
+        }
+        console.log('Fetched description for table', tableName);
+        return resolve(Table);
+      }
+    )
+  );
 
-  const {
-    Table: tableDescription,
-    $response: descriptionResponse,
-  } = await sourceClient
-    .describeTable({
-      TableName: tableName,
+const createTemporaryTable = async (
+  tableInput: AWS.DynamoDB.CreateTableInput
+): Promise<void> =>
+  new Promise((resolve, reject) =>
+    getDynamoDB('local').createTable(tableInput, (err, {TableDescription}) => {
+      if (!TableDescription || err) {
+        console.error(err);
+        return reject(new Error('Failed to create table'));
+      }
+      console.log('Created temporary table', TableDescription.TableName);
+      return resolve();
     })
-    .promise();
+  );
 
-  if (!tableDescription) {
-    console.info(descriptionResponse.data);
-    if (descriptionResponse.error) {
-      console.error(descriptionResponse.error);
-    }
-    return;
-  }
-
-  if (!tableDescription.AttributeDefinitions || !tableDescription.KeySchema) {
-    console.error('No attribute definitions for table!');
-    return;
-  }
-
-  configureAWS('local');
-
-  const {
-    TableDescription: createdTableDescription,
-    $response: createResponse,
-  } = await localClient
-    .createTable({
-      AttributeDefinitions: tableDescription.AttributeDefinitions,
-      TableName: temporaryTableName,
-      KeySchema: tableDescription.KeySchema,
-      LocalSecondaryIndexes: parseIndexResponse(
-        tableDescription.LocalSecondaryIndexes
-      ),
-      GlobalSecondaryIndexes: parseIndexResponse(
-        tableDescription.GlobalSecondaryIndexes
-      ),
-      ProvisionedThroughput: {
-        ReadCapacityUnits: 40000,
-        WriteCapacityUnits: 40000,
+const getItemsFromSourceTable = async (
+  items: DynamoDB.AttributeMap[],
+  startKey: Key | undefined = undefined
+): Promise<DynamoDB.ItemList> =>
+  new Promise((resolve, reject) =>
+    getDynamoDB('source').scan(
+      {
+        TableName: tableName,
+        ExclusiveStartKey: startKey,
       },
-    })
-    .promise();
+      (err, {Items, Count, LastEvaluatedKey}) => {
+        if (err) {
+          console.error(err);
+          return reject(new Error('Failed to get items from table'));
+        }
 
-  if (!createdTableDescription) {
-    console.info(createResponse.data);
-    if (createResponse.error) {
-      console.error(createResponse.error);
-    }
-    return;
+        if (!Items || !Count) {
+          return reject(new Error('Table did not contain any items'));
+        }
+
+        console.log(
+          'Fetched',
+          Count,
+          'items (total',
+          Count + items.length,
+          'items)'
+        );
+        const combinedItems = items.concat(...Items);
+        if (LastEvaluatedKey !== undefined) {
+          console.log('Table read was partial, fetching more data');
+          return getItemsFromSourceTable(combinedItems, LastEvaluatedKey);
+        }
+        return resolve(combinedItems);
+      }
+    )
+  );
+
+(async () => {
+  try {
+    // 0. Delete local temporary table
+    await deleteTemporaryTable();
+
+    // 1. Describe source table
+    const sourceTableDescription = await describeSourceTable();
+    // 1a. Validate & fix indexes & use temporary table name
+    const tableInput = convertDescriptionToInput(
+      sourceTableDescription,
+      temporaryTableName
+    );
+
+    // 2. Create temporary table from source table description
+    await createTemporaryTable(tableInput);
+
+    // 3. Get items from source table
+    const sourceItems = await getItemsFromSourceTable([]);
+    console.log(sourceItems);
+    return 0;
+  } catch (e) {
+    console.error(e);
+    return -1;
   }
-
-  console.log('Table created with name', createdTableDescription.TableName);
-  /*
-  const {Items, Count, LastEvaluatedKey} = await client
-    .scan({
-      TableName: tableName,
-    })
-    .promise();
-
-  console.log(Count, LastEvaluatedKey, Items);
-  configureAWS('local');
-  */
 })();
