@@ -39,7 +39,11 @@ export const describeSourceTable = async (): Promise<
             new Error('Failed to get description for source table!')
           );
         }
-        console.log('Fetched description for table', config.source.table);
+        console.log(
+          'Fetched description for table',
+          config.source.table,
+          '(' + config.source.region + ')'
+        );
         return resolve(response.Table);
       }
     )
@@ -143,6 +147,9 @@ export const copyItemsToTemporaryTable = async (
       'Copied',
       allItems.length,
       'to',
-      config.localConfig.temporaryTableName
+      config.localConfig.temporaryTableName,
+      '(localhost) from',
+      config.source.table,
+      '(' + config.source.region + ')'
     );
   });

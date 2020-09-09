@@ -5,8 +5,7 @@
   "main": "index.js",
   "scripts": {
     "build": "rimraf ./build && tsc",
-    "start": "npm run build && node build/index.js",
-    "demo-migrate": "node build/index.js --ST dynamodb-migrator-temporary-table --TT demo-table -M fetch --temporary-table-name demo-table",
+    "build:run": "npm run build && node build/index.js --ST demo-table --TT not-in-use -M fetch",
     "test": "jest",
     "check": "gts check",
     "clean": "gts clean",
