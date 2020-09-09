@@ -6,7 +6,6 @@
   "scripts": {
     "build": "rimraf ./build && tsc",
     "start": "npm run build && node build/index.js",
-    "migrate": "node build/index.js --ST toggl-2-toggl-dev-TimeEntries --SP patrikmarin --SR eu-central-1 --TT demo-table -M fetch",
     "demo-migrate": "node build/index.js --ST dynamodb-migrator-temporary-table --TT demo-table -M fetch --temporary-table-name demo-table",
     "test": "jest",
     "check": "gts check",
