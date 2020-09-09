@@ -1,21 +1,25 @@
 import DynamoDB, {Key} from 'aws-sdk/clients/dynamodb';
 import lodashChunk from 'lodash.chunk';
 import {Transform} from 'stream';
-import {getDynamoDB} from './config';
-
-const tableName = 'toggl-2-toggl-dev-TimeEntries';
-const temporaryTableName = 'dynamodb-migrator-temporary-table';
+import {getDynamoDB} from './databases';
+import config from './config';
 
 export const deleteTemporaryTable = async (): Promise<void> =>
   new Promise((resolve, reject) =>
-    getDynamoDB('local').deleteTable({TableName: temporaryTableName}, err => {
-      if (err && err.code !== 'ResourceNotFoundException') {
-        console.error(err);
-        return reject(new Error('Temporary table deletion failed!'));
+    getDynamoDB('local').deleteTable(
+      {TableName: config.localConfig.temporaryTableName},
+      err => {
+        if (err && err.code !== 'ResourceNotFoundException') {
+          console.error(err);
+          return reject(new Error('Temporary table deletion failed!'));
+        }
+        console.log(
+          'Deleted temporary table',
+          config.localConfig.temporaryTableName
+        );
+        return resolve();
       }
-      console.log('Deleted temporary table', temporaryTableName);
-      return resolve();
-    })
+    )
   );
 
 export const describeSourceTable = async (): Promise<
@@ -23,7 +27,7 @@ export const describeSourceTable = async (): Promise<
 > =>
   new Promise((resolve, reject) =>
     getDynamoDB('source').describeTable(
-      {TableName: tableName},
+      {TableName: config.source.table},
       (err, response) => {
         if (err) {
           console.error(err);
@@ -35,7 +39,7 @@ export const describeSourceTable = async (): Promise<
             new Error('Failed to get description for source table!')
           );
         }
-        console.log('Fetched description for table', tableName);
+        console.log('Fetched description for table', config.source.table);
         return resolve(response.Table);
       }
     )
@@ -63,7 +67,7 @@ export const getItemsFromSourceTable = async (
   new Promise((resolve: (count: number) => void, reject) =>
     getDynamoDB('source').scan(
       {
-        TableName: tableName,
+        TableName: config.source.table,
         ExclusiveStartKey: startKey,
         ConsistentRead: true,
       },
@@ -92,10 +96,15 @@ export const getItemsFromSourceTable = async (
     )
   )
     .then(totalCount => {
-      console.log('Scanned table', tableName, '(' + totalCount, 'items)');
+      console.log(
+        'Scanned table',
+        config.source.table,
+        '(' + totalCount,
+        'items)'
+      );
     })
     .catch(e => {
-      console.log('Failed to scan table', tableName);
+      console.log('Failed to scan table', config.source.table);
       itemStream.write(e);
     })
     .finally(() => {
@@ -115,7 +124,7 @@ export const copyItemsToTemporaryTable = async (
               TransactItems: items.map(item => ({
                 Put: {
                   Item: item,
-                  TableName: temporaryTableName,
+                  TableName: config.localConfig.temporaryTableName,
                 },
               })),
             },
@@ -130,5 +139,10 @@ export const copyItemsToTemporaryTable = async (
         )
     )
   ).then(() => {
-    console.log('Copied', allItems.length, 'to', temporaryTableName);
+    console.log(
+      'Copied',
+      allItems.length,
+      'to',
+      config.localConfig.temporaryTableName
+    );
   });

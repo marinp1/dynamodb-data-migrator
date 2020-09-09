@@ -2,6 +2,8 @@ import through2 from 'through2';
 import {DynamoDB} from 'aws-sdk';
 import {convertDescriptionToInput} from './utils';
 
+import config from './config';
+
 import {
   deleteTemporaryTable,
   describeSourceTable,
@@ -9,8 +11,6 @@ import {
   getItemsFromSourceTable,
   copyItemsToTemporaryTable,
 } from './operations';
-
-const temporaryTableName = 'dynamodb-migrator-temporary-table';
 
 export const main = async () => {
   try {
@@ -22,7 +22,7 @@ export const main = async () => {
     // 1a. Validate & fix indexes & use temporary table name
     const tableInput = convertDescriptionToInput(
       sourceTableDescription,
-      temporaryTableName
+      config.localConfig.temporaryTableName
     );
 
     // 2. Create temporary table from source table description
@@ -42,12 +42,6 @@ export const main = async () => {
       console.log(e);
       throw new Error('Failed to scan data from source table');
     });
-
-    /*
-    itemStream.on('end', () => {
-      console.log('Copied all items from source to temporary table');
-    });
-    */
 
     // 3. Get items from source table and add them to stream
     await getItemsFromSourceTable(itemStream);
