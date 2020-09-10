@@ -2,58 +2,62 @@ import DynamoDB, {Key} from 'aws-sdk/clients/dynamodb';
 import lodashChunk from 'lodash.chunk';
 import {Transform} from 'stream';
 import {getDynamoDB} from './databases';
-import config from './config';
+import {Config} from './types';
 
-export const deleteTemporaryTable = async (): Promise<void> =>
+export const deleteTemporaryTable = async (
+  tableName: string,
+  config: Config
+): Promise<void> =>
   new Promise((resolve, reject) =>
-    getDynamoDB('local').deleteTable(
-      {TableName: config.localConfig.temporaryTableName},
-      err => {
-        if (err && err.code !== 'ResourceNotFoundException') {
-          console.error(err);
-          return reject(new Error('Temporary table deletion failed!'));
-        }
-        console.log(
-          'Deleted temporary table',
-          config.localConfig.temporaryTableName
-        );
-        return resolve();
+    getDynamoDB('local', config).deleteTable({TableName: tableName}, err => {
+      if (err && err.code !== 'ResourceNotFoundException') {
+        console.error(err);
+        return reject(new Error('Temporary table deletion failed!'));
       }
-    )
+      console.log('Deleted temporary table', tableName);
+      return resolve();
+    })
   );
 
-export const describeSourceTable = async (): Promise<
-  AWS.DynamoDB.TableDescription
-> =>
-  new Promise((resolve, reject) =>
-    getDynamoDB('source').describeTable(
-      {TableName: config.source.table},
+export const describeTable = async (
+  type: 'source' | 'target',
+  config: Config
+): Promise<AWS.DynamoDB.TableDescription> => {
+  const regionConfig = config[type];
+  if (!regionConfig) {
+    throw new Error('Configuration empty');
+  }
+  return new Promise((resolve, reject) =>
+    getDynamoDB(type, config).describeTable(
+      {TableName: regionConfig.tableName},
       (err, response) => {
         if (err) {
           console.error(err);
-          return reject(new Error('Failed to describe source table'));
+          return reject(new Error(`Failed to describe ${type} table`));
         }
         if (!response.Table) {
           console.info(response);
           return reject(
-            new Error('Failed to get description for source table!')
+            new Error(`Failed to get description for ${type} table!`)
           );
         }
         console.log(
           'Fetched description for table',
-          config.source.table,
+          regionConfig.tableName,
           '(' + config.source.region + ')'
         );
         return resolve(response.Table);
       }
     )
   );
+};
 
 export const createTemporaryTable = async (
-  tableInput: AWS.DynamoDB.CreateTableInput
+  tableInput: AWS.DynamoDB.CreateTableInput,
+  config: Config
 ): Promise<void> =>
   new Promise((resolve, reject) =>
-    getDynamoDB('local').createTable(tableInput, (err, response) => {
+    getDynamoDB('local', config).createTable(tableInput, (err, response) => {
       if (!response || !response.TableDescription || err) {
         console.error(err);
         return reject(new Error('Failed to create table'));
@@ -65,13 +69,14 @@ export const createTemporaryTable = async (
 
 export const getItemsFromSourceTable = async (
   itemStream: Transform,
+  config: Config,
   totalCount = 0,
   startKey: Key | undefined = undefined
 ): Promise<void> =>
   new Promise((resolve: (count: number) => void, reject) =>
-    getDynamoDB('source').scan(
+    getDynamoDB('source', config).scan(
       {
-        TableName: config.source.table,
+        TableName: config.source.tableName,
         ExclusiveStartKey: startKey,
         ConsistentRead: true,
       },
@@ -90,6 +95,7 @@ export const getItemsFromSourceTable = async (
         if (LastEvaluatedKey !== undefined) {
           return getItemsFromSourceTable(
             itemStream,
+            config,
             totalCount + Count,
             LastEvaluatedKey
           );
@@ -102,13 +108,13 @@ export const getItemsFromSourceTable = async (
     .then(totalCount => {
       console.log(
         'Scanned table',
-        config.source.table,
+        config.source.tableName,
         '(' + totalCount,
         'items)'
       );
     })
     .catch(e => {
-      console.log('Failed to scan table', config.source.table);
+      console.log('Failed to scan table', config.source.tableName);
       itemStream.write(e);
     })
     .finally(() => {
@@ -116,19 +122,20 @@ export const getItemsFromSourceTable = async (
     });
 
 export const copyItemsToTemporaryTable = async (
-  allItems: DynamoDB.ItemList
+  allItems: DynamoDB.ItemList,
+  config: Config
 ): Promise<void> =>
   Promise.all(
     // AWS Supports at most 25 items per chunk
     lodashChunk(allItems, 25).map(
       async items =>
         new Promise((resolve: () => void, reject) =>
-          getDynamoDB('local').transactWriteItems(
+          getDynamoDB('local', config).transactWriteItems(
             {
               TransactItems: items.map(item => ({
                 Put: {
                   Item: item,
-                  TableName: config.localConfig.temporaryTableName,
+                  TableName: config.localConfig.sourceTableName,
                 },
               })),
             },
@@ -147,9 +154,9 @@ export const copyItemsToTemporaryTable = async (
       'Copied',
       allItems.length,
       'to',
-      config.localConfig.temporaryTableName,
+      config.localConfig.sourceTableName,
       '(localhost) from',
-      config.source.table,
+      config.source.tableName,
       '(' + config.source.region + ')'
     );
   });

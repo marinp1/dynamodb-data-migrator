@@ -1,58 +1,150 @@
-import through2 from 'through2';
-import {DynamoDB} from 'aws-sdk';
-import {convertDescriptionToInput} from './utils';
+import yargs from 'yargs';
+import * as procedures from './procedures';
 
-import config from './config';
+interface InitialiseArguments {
+  'source-profile': string;
+  'source-region': string;
+  'source-table': string;
+  'target-profile': string;
+  'target-region': string;
+  'target-table': string | undefined;
+  'local-dynamodb-endpoint': string;
+  'local-source-tablename': string;
+  'local-target-tablename': string;
+}
 
-import {
-  deleteTemporaryTable,
-  describeSourceTable,
-  createTemporaryTable,
-  getItemsFromSourceTable,
-  copyItemsToTemporaryTable,
-} from './operations';
-
-export const main = async () => {
-  try {
-    // 0. Delete local temporary table
-    await deleteTemporaryTable();
-
-    // 1. Describe source table
-    const sourceTableDescription = await describeSourceTable();
-    // 1a. Validate & fix indexes & use temporary table name
-    const tableInput = convertDescriptionToInput(
-      sourceTableDescription,
-      config.localConfig.temporaryTableName
-    );
-
-    // 2. Create temporary table from source table description
-    await createTemporaryTable(tableInput);
-
-    // Create stream to handle reading / writing
-    const itemStream = through2({objectMode: true});
-
-    // Start listening stream input
-    itemStream.on('data', (chunk: DynamoDB.ItemList) => {
-      // TODO: Transform data?
-      // 4. Add items to table
-      copyItemsToTemporaryTable(chunk);
+/*
+yargs.command('fetch', 'fetch data', yargs => {
+  yargs
+    .option('config-file', {
+      description: 'configuration file to use for fetching',
+      required: true,
+      type: 'string',
+    })
+    .option('no-dry-run', {
+      description: 'run operation',
+      default: false,
+      type: 'boolean',
     });
+  // TODO: CREATE yargs.option('throttle-value', {});
+});
+*/
 
-    itemStream.on('error', e => {
-      console.log(e);
-      throw new Error('Failed to scan data from source table');
-    });
+/*
+yargs.command('transform', 'transform data', yargs => {
+  yargs.option('config-file', {});
+  yargs.option('transform-file', {});
+});
 
-    // 3. Get items from source table and add them to stream
-    await getItemsFromSourceTable(itemStream);
+yargs.command('post', 'post data', yargs => {
+  yargs.option('config-file', {});
+  yargs.option('no-dry-run', {});
+  yargs.option('throttle-value', {});
+});
+*/
 
-    // TODO: 5. Validate number of entries in table
-
-    return 0;
-  } catch (e) {
-    console.error(e);
-    return -1;
-  }
-};
-
-main();
+yargs
+  .usage('$0 <initialize> [args]')
+  .command<InitialiseArguments>(
+    'initialize',
+    'initialise migration',
+    yargs => {
+      yargs
+        .option('source-profile', {
+          description:
+            'AWS profile to use for fetching, set empty for localhost',
+          alias: 'SP',
+          default: 'localhost',
+          type: 'string',
+        })
+        .option('source-region', {
+          description:
+            'AWS region to use for fetching, set empty for localhost',
+          alias: 'SR',
+          default: 'localhost',
+          type: 'string',
+        })
+        .option('source-table', {
+          description: 'DynamoDB table to fetch data from',
+          alias: 'ST',
+          type: 'string',
+        })
+        .option('target-profile', {
+          description:
+            'AWS profile to use for posting, set empty for localhost',
+          alias: 'TP',
+          default: 'localhost',
+          type: 'string',
+        })
+        .option('target-region', {
+          description: 'AWS region to use for posting, set empty for localhost',
+          alias: 'TR',
+          default: 'localhost',
+          type: 'string',
+        })
+        .option('target-table', {
+          description: 'DynamoDB table to post data to',
+          alias: 'TT',
+          type: 'string',
+        })
+        .option('local-dynamodb-endpoint', {
+          describe: 'dynamob endpoint used for local migration',
+          default: 'http://localhost:8000',
+          type: 'string',
+        })
+        .option('local-source-tablename', {
+          describe:
+            'default name for source temporary table used for migration',
+          default: 'migrator-temp-source',
+          type: 'string',
+        })
+        .option('local-target-tablename', {
+          describe:
+            'default name for source temporary table used for migration',
+          default: 'migrator-temp-target',
+          type: 'string',
+        })
+        .demandOption('source-table', 'source table name is required')
+        .help()
+        .alias('help', 'h').argv;
+    },
+    argv => {
+      const startTs = Date.now();
+      console.log('Starting procedure initialize...');
+      return procedures
+        .initialiseTables({
+          source: {
+            profile: argv['source-profile'],
+            region: argv['source-region'],
+            tableName: argv['source-table'],
+          },
+          target: argv['target-table']
+            ? {
+                profile: argv['target-profile'],
+                region: argv['target-region'],
+                tableName: argv['target-table'],
+              }
+            : null,
+          localConfig: {
+            endpoint: argv['local-dynamodb-endpoint'],
+            sourceTableName: argv['local-source-tablename'],
+            targetTableName: argv['local-target-tablename'],
+          },
+        })
+        .then(() => {
+          console.log(
+            'Procedure completed in',
+            ((Date.now() - startTs) / 1000).toFixed(2),
+            'seconds'
+          );
+        });
+    }
+  )
+  .demandCommand(
+    1,
+    1,
+    'see --usage',
+    'only one command can be given at single time'
+  )
+  .help()
+  .alias('help', 'h').argv;

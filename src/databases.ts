@@ -1,29 +1,38 @@
 import * as AWS from 'aws-sdk';
-import config from './config';
+import {Config} from './types';
 
-const getLocalConfig = () => {
+const getLocalConfig = (config: Config) => {
   return new AWS.DynamoDB({
     region: 'local',
     credentials: undefined,
     accessKeyId: 'local',
     secretAccessKey: 'local',
-    endpoint: config.localConfig.localDynamoDbUrl,
+    endpoint: config.localConfig.endpoint,
   });
 };
 
-export const getDynamoDB = (type: 'source' | 'local' | 'target') => {
+export const getDynamoDB = (
+  type: 'source' | 'local' | 'target',
+  config: Config
+) => {
   if (type === 'local') {
-    return getLocalConfig();
+    return getLocalConfig(config);
   }
 
-  if (config[type].region === 'localhost') {
-    return getLocalConfig();
+  const regionConfig = config[type];
+
+  if (!regionConfig) {
+    throw new Error('Configuration not given');
+  }
+
+  if (regionConfig.region === 'localhost') {
+    return getLocalConfig(config);
   }
 
   return new AWS.DynamoDB({
-    region: config[type].region,
+    region: regionConfig.region,
     credentials: new AWS.SharedIniFileCredentials({
-      profile: config[type].profile,
+      profile: regionConfig.profile,
     }),
     accessKeyId: undefined,
     secretAccessKey: undefined,

@@ -37,10 +37,13 @@ const parseIndexResponse = (
     : undefined;
 };
 
-export const convertDescriptionToInput = (
-  tableDescription: AWS.DynamoDB.TableDescription,
+export const convertDescriptionToInput = <
+  T extends AWS.DynamoDB.TableDescription | null
+>(
+  tableDescription: T,
   temporaryTableName: string
-): AWS.DynamoDB.CreateTableInput => {
+): AWS.DynamoDB.CreateTableInput | null => {
+  if (tableDescription === null) return null;
   if (!tableDescription.AttributeDefinitions || !tableDescription.KeySchema) {
     throw new Error('No attribute definitions or key schema in table');
   }
