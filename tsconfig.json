@@ -3,6 +3,7 @@
   "compilerOptions": {
     /* Visit https://aka.ms/tsconfig.json to read more about this file */
 
+    "module": "ES2015",
     /* Basic Options */
     // "incremental": true,                   /* Enable incremental compilation */
 
