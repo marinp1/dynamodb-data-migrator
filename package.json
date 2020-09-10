@@ -7,11 +7,14 @@
     "compile": "rimraf ./build && tsc",
     "compile:init": "npm run build && node build/index.js initialize --ST migration-testing-table --SR eu-central-1 --SP patrikmarin",
     "build": "rollup -c --file ddm-v$npm_package_version.js",
-    "test": "jest",
+    "test": "npm run check",
     "check": "gts check",
     "clean": "gts clean",
     "fix": "gts fix",
-    "dynamo-client": "DYNAMO_ENDPOINT=http://localhost:8000 node_modules/dynamodb-admin/bin/dynamodb-admin.js"
+    "dynamo-client": "DYNAMO_ENDPOINT=http://localhost:8000 node_modules/dynamodb-admin/bin/dynamodb-admin.js",
+    "preversion": "npm test",
+    "version": "npm run build",
+    "postversion": "git push && git push --tags && rm -rf build/temp"
   },
   "author": "Patrik Marin",
   "license": "MIT",
