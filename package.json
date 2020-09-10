@@ -6,7 +6,7 @@
   "scripts": {
     "compile": "rimraf ./build && tsc",
     "compile:init": "npm run build && node build/index.js initialize --ST migration-testing-table --SR eu-central-1 --SP patrikmarin",
-    "bundle": "rollup -c",
+    "build": "rollup -c",
     "test": "jest",
     "check": "gts check",
     "clean": "gts clean",
