@@ -8,6 +8,7 @@ import {
   describeTable,
   deleteTemporaryTable,
   createTemporaryTable,
+  saveConfigToFile,
   /*
   getItemsFromSourceTable,
   copyItemsToTemporaryTable,
@@ -38,4 +39,6 @@ export const initialiseTables = async (config: Config) => {
   await createTemporaryTable(sourceTableInput, config);
   if (targetTableInput !== null)
     await createTemporaryTable(targetTableInput, config);
+
+  await saveConfigToFile(config);
 };

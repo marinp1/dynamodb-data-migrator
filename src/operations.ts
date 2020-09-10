@@ -1,8 +1,26 @@
+import fs from 'fs';
+import yaml from 'js-yaml';
 import DynamoDB, {Key} from 'aws-sdk/clients/dynamodb';
 import lodashChunk from 'lodash.chunk';
 import {Transform} from 'stream';
 import {getDynamoDB} from './databases';
 import {Config} from './types';
+
+export const saveConfigToFile = async (config: Config) => {
+  const configAsYaml = yaml.safeDump(config);
+  const fileName = `ddm.${config.source.tableName}.yml`;
+  return fs.writeFile(fileName, configAsYaml, 'utf8', err => {
+    if (err) {
+      console.error(err);
+      throw new Error('Failed to write configuration');
+    }
+    console.log(
+      'Configuration save as',
+      fileName,
+      'to current directory, use that with --config command to preload configuration for next steps'
+    );
+  });
+};
 
 export const deleteTemporaryTable = async (
   tableName: string,
