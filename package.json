@@ -6,14 +6,11 @@
   "scripts": {
     "compile": "rimraf ./build && tsc",
     "compile:init": "npm run build && node build/index.js initialize --ST migration-testing-table --SR eu-central-1 --SP patrikmarin",
-    "build": "rollup -c",
+    "build": "rollup -c --file ddm-v$npm_package_version.js",
     "test": "jest",
     "check": "gts check",
     "clean": "gts clean",
     "fix": "gts fix",
-    "prepare": "npm run compile",
-    "pretest": "npm run compile",
-    "posttest": "npm run check",
     "dynamo-client": "DYNAMO_ENDPOINT=http://localhost:8000 node_modules/dynamodb-admin/bin/dynamodb-admin.js"
   },
   "author": "Patrik Marin",

@@ -8,7 +8,6 @@ module.exports = {
   input: 'src/index.ts', // our source file
   output: [
     {
-      file: 'bundle.js',
       format: 'cjs',
     },
   ],
