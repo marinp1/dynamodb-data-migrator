@@ -1,26 +1,8 @@
-import fs from 'fs';
-import yaml from 'js-yaml';
 import DynamoDB, {Key} from 'aws-sdk/clients/dynamodb';
 import lodashChunk from 'lodash.chunk';
 import {Transform} from 'stream';
 import {getDynamoDB} from './databases';
 import {Config} from './types';
-
-export const saveConfigToFile = async (config: Config) => {
-  const configAsYaml = yaml.safeDump(config);
-  const fileName = `ddm.${config.source.tableName}.yml`;
-  return fs.writeFile(fileName, configAsYaml, 'utf8', err => {
-    if (err) {
-      console.error(err);
-      throw new Error('Failed to write configuration');
-    }
-    console.log(
-      'Configuration save as',
-      fileName,
-      'to current directory, use that with --config command to preload configuration for next steps'
-    );
-  });
-};
 
 export const deleteTemporaryTable = async (
   tableName: string,
@@ -85,54 +67,73 @@ export const createTemporaryTable = async (
     })
   );
 
+const delay = async (ms: number) =>
+  new Promise(resolve =>
+    ms > 0 ? setTimeout(() => resolve(), ms) : resolve()
+  );
+
 export const getItemsFromSourceTable = async (
   itemStream: Transform,
   config: Config,
+  options: {
+    limit: number | null;
+    throttle: number;
+  } = {
+    limit: null,
+    throttle: 0,
+  },
   totalCount = 0,
   startKey: Key | undefined = undefined
 ): Promise<void> =>
-  new Promise((resolve: (count: number) => void, reject) =>
-    getDynamoDB('source', config).scan(
-      {
-        TableName: config.source.tableName,
-        ExclusiveStartKey: startKey,
-        ConsistentRead: true,
-      },
-      (err, {Items, Count, LastEvaluatedKey}) => {
-        if (err) {
-          return reject(new Error('Failed to get items from table'));
-        }
+  new Promise(
+    (resolve: (object: {count: number; limited: boolean}) => void, reject) =>
+      getDynamoDB('source', config).scan(
+        {
+          TableName: config.source.tableName,
+          ExclusiveStartKey: startKey,
+          ConsistentRead: true,
+          Limit: options.limit || undefined,
+        },
+        async (err, {Items, Count, LastEvaluatedKey}) => {
+          if (err) {
+            return reject(new Error('Failed to get items from table'));
+          }
 
-        if (!Items || !Count) {
-          return reject(new Error('Table did not contain any items'));
-        }
+          if (!Items || !Count) {
+            return reject(new Error('Table did not contain any items'));
+          }
 
-        // Add fetched items to stream
-        itemStream.push(Items);
+          // Add fetched items to stream
+          itemStream.push(Items);
 
-        if (LastEvaluatedKey !== undefined) {
-          return getItemsFromSourceTable(
-            itemStream,
-            config,
-            totalCount + Count,
-            LastEvaluatedKey
+          const overLimit = !!(
+            options.limit && totalCount + Count >= options.limit
           );
-        } else {
-          return resolve(totalCount + Count);
+
+          if (LastEvaluatedKey === undefined || overLimit) {
+            return resolve({count: totalCount + Count, limited: overLimit});
+          } else {
+            await delay(options.throttle);
+            return getItemsFromSourceTable(
+              itemStream,
+              config,
+              options,
+              totalCount + Count,
+              LastEvaluatedKey
+            );
+          }
         }
-      }
-    )
+      )
   )
-    .then(totalCount => {
-      console.log(
-        'Scanned table',
-        config.source.tableName,
-        '(' + totalCount,
-        'items)'
+    .then(({count, limited}) => {
+      console.debug(
+        `Scanned table ${config.source.tableName} (${count} items${
+          limited ? `, result limited to ${options.limit}` : ''
+        })`
       );
     })
     .catch(e => {
-      console.log('Failed to scan table', config.source.tableName);
+      console.debug('Failed to scan table', config.source.tableName);
       itemStream.write(e);
     })
     .finally(() => {

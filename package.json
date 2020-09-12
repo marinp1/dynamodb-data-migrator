@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "compile": "rimraf ./build && tsc",
-    "compile:init": "npm run build && node build/index.js initialize --ST migration-testing-table --SR eu-central-1 --SP patrikmarin",
+    "compile:init": "npm run compile && node build/index.js initialize --ST migration-testing-table --SR eu-central-1 --SP patrikmarin",
     "build": "rollup -c --file ddm-v$npm_package_version.js",
     "test": "npm run check",
     "check": "gts check",

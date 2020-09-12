@@ -1,5 +1,7 @@
 import yargs from 'yargs';
 import * as procedures from './procedures';
+import {saveConfigToFile, loadConfigFromFile} from './config';
+import {Config} from './types';
 
 interface InitialiseArguments {
   'source-profile': string;
@@ -11,24 +13,16 @@ interface InitialiseArguments {
   'local-dynamodb-endpoint': string;
   'local-source-tablename': string;
   'local-target-tablename': string;
+  'use-source-schema': boolean;
 }
 
-/*
-yargs.command('fetch', 'fetch data', yargs => {
-  yargs
-    .option('config-file', {
-      description: 'configuration file to use for fetching',
-      required: true,
-      type: 'string',
-    })
-    .option('no-dry-run', {
-      description: 'run operation',
-      default: false,
-      type: 'boolean',
-    });
-  // TODO: CREATE yargs.option('throttle-value', {});
-});
-*/
+interface FetchArguments {
+  'config-file': string;
+  'dry-run': boolean;
+  truncate: boolean;
+  limit: number;
+  throttle: number;
+}
 
 /*
 yargs.command('transform', 'transform data', yargs => {
@@ -104,33 +98,93 @@ yargs
           default: 'migrator-temp-target',
           type: 'string',
         })
-        .demandOption('source-table', 'source table name is required')
-        .help()
-        .alias('help', 'h').argv;
+        .option('use-source-schema', {
+          describe: 'if source table schema should be used for target',
+          default: false,
+          type: 'boolean',
+        })
+        .demandOption('source-table', 'source table name is required');
     },
     argv => {
       const startTs = Date.now();
       console.log('Starting procedure initialize...');
+      const config: Config = {
+        source: {
+          profile: argv['source-profile'],
+          region: argv['source-region'],
+          tableName: argv['source-table'],
+        },
+        target: argv['target-table']
+          ? {
+              profile: argv['target-profile'],
+              region: argv['target-region'],
+              tableName: argv['target-table'],
+            }
+          : null,
+        localConfig: {
+          endpoint: argv['local-dynamodb-endpoint'],
+          sourceTableName: argv['local-source-tablename'],
+          targetTableName: argv['local-target-tablename'],
+        },
+      };
+
       return procedures
-        .initialiseTables({
-          source: {
-            profile: argv['source-profile'],
-            region: argv['source-region'],
-            tableName: argv['source-table'],
-          },
-          target: argv['target-table']
-            ? {
-                profile: argv['target-profile'],
-                region: argv['target-region'],
-                tableName: argv['target-table'],
-              }
-            : null,
-          localConfig: {
-            endpoint: argv['local-dynamodb-endpoint'],
-            sourceTableName: argv['local-source-tablename'],
-            targetTableName: argv['local-target-tablename'],
-          },
+        .initialiseTables(config, {useSourceSchema: argv['use-source-schema']})
+        .then(() => saveConfigToFile(config))
+        .then(() => {
+          console.log(
+            'Procedure completed in',
+            ((Date.now() - startTs) / 1000).toFixed(2),
+            'seconds'
+          );
+        });
+    }
+  )
+  .command<FetchArguments>(
+    'fetch',
+    'fetch data',
+    yargs => {
+      yargs
+        .option('config-file', {
+          description: 'configuration file to use for fetching',
+          required: true,
+          type: 'string',
         })
+        .option('dry-run', {
+          description: 'run operation',
+          default: true,
+          type: 'boolean',
+        })
+        .option('truncate', {
+          description: 'empty destination table during import',
+          default: false,
+          type: 'boolean',
+        })
+        .option('limit', {
+          description: 'the max number to import (soft limit)',
+          default: -1,
+          type: 'number',
+        })
+        .option('throttle', {
+          description: 'number of milliseconds to wait before each segment',
+          default: 0,
+          type: 'number',
+        })
+        .demandOption('config-file', 'path to configuration file is required');
+      // TODO: CREATE yargs.option('throttle-value', {});
+    },
+    argv => {
+      const startTs = Date.now();
+      console.log('Starting procedure fetch...');
+      return loadConfigFromFile(argv['config-file'], {skipTarget: true})
+        .then(config =>
+          procedures.copyFromSourceToTemporary(config, {
+            dryrun: argv['dry-run'],
+            limit: argv.limit === -1 ? null : argv.limit,
+            truncate: argv.truncate,
+            throttle: argv.throttle,
+          })
+        )
         .then(() => {
           console.log(
             'Procedure completed in',

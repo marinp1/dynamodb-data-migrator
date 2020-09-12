@@ -1,4 +1,4 @@
-interface AWSConfig {
+export interface AWSConfig {
   profile: string;
   region: string;
   tableName: string;
