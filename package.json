@@ -11,10 +11,7 @@
     "check": "gts check",
     "clean": "gts clean",
     "fix": "gts fix",
-    "dynamo-client": "DYNAMO_ENDPOINT=http://localhost:8000 node_modules/dynamodb-admin/bin/dynamodb-admin.js",
-    "preversion": "npm test",
-    "version": "npm run build",
-    "postversion": "git push && git push --tags && rm -rf build/temp"
+    "dynamo-client": "DYNAMO_ENDPOINT=http://localhost:8000 node_modules/dynamodb-admin/bin/dynamodb-admin.js"
   },
   "author": "Patrik Marin",
   "license": "MIT",
