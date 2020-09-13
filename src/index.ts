@@ -16,6 +16,13 @@ interface InitialiseArguments {
   'use-source-schema': boolean;
 }
 
+interface MigrationArguments {
+  'config-file': string;
+  'dry-run': boolean;
+  'create-table': boolean;
+  throttle: number;
+}
+
 interface FetchArguments {
   'config-file': string;
   'dry-run': boolean;
@@ -24,12 +31,14 @@ interface FetchArguments {
   throttle: number;
 }
 
-/*
-yargs.command('transform', 'transform data', yargs => {
-  yargs.option('config-file', {});
-  yargs.option('transform-file', {});
-});
+interface TransformArguments {
+  'config-file': string;
+  'transform-file': string;
+  'dry-run': boolean;
+  truncate: boolean;
+}
 
+/*
 yargs.command('post', 'post data', yargs => {
   yargs.option('config-file', {});
   yargs.option('no-dry-run', {});
@@ -171,7 +180,6 @@ yargs
           type: 'number',
         })
         .demandOption('config-file', 'path to configuration file is required');
-      // TODO: CREATE yargs.option('throttle-value', {});
     },
     argv => {
       const startTs = Date.now();
@@ -183,6 +191,55 @@ yargs
             limit: argv.limit === -1 ? null : argv.limit,
             truncate: argv.truncate,
             throttle: argv.throttle,
+          })
+        )
+        .then(() => {
+          console.log(
+            'Procedure completed in',
+            ((Date.now() - startTs) / 1000).toFixed(2),
+            'seconds'
+          );
+        });
+    }
+  )
+  .command<TransformArguments>(
+    'transform',
+    'run transformation from data',
+    yargs => {
+      yargs
+        .option('config-file', {
+          description: 'configuration file to use for fetching',
+          required: true,
+          type: 'string',
+        })
+        /*
+        .option('transform-file', {
+          description: 'file to use for transformation',
+          required: true,
+          type: 'string',
+        })
+        */
+        .option('dry-run', {
+          description: 'run transformation',
+          default: true,
+          type: 'boolean',
+        })
+        .option('truncate', {
+          description: 'empty destination table during import',
+          default: false,
+          type: 'boolean',
+        })
+        .demandOption('config-file', 'path to config file is required');
+      // .demandOption('transform-file', 'path to transform file is required');
+    },
+    argv => {
+      const startTs = Date.now();
+      console.log('Starting procedure fetch...');
+      return loadConfigFromFile(argv['config-file'], {skipTarget: true})
+        .then(config =>
+          procedures.tranformData(c => c, config, {
+            truncate: argv.truncate,
+            dryrun: argv['dry-run'],
           })
         )
         .then(() => {

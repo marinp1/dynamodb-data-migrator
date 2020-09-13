@@ -6,6 +6,7 @@ type RequiredIndexType = {
   Projection: Projection;
 };
 
+// FIXME: Use correct ProvisionedThroughput
 const parseIndexResponse = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   indexes: undefined | Array<Partial<RequiredIndexType> & {[x: string]: any}>
@@ -37,6 +38,7 @@ const parseIndexResponse = (
     : undefined;
 };
 
+// FIXME: Use correct ProvisionedThroughput
 export const convertDescriptionToInput = <
   T extends AWS.DynamoDB.TableDescription | null
 >(

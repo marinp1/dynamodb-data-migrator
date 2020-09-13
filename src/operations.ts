@@ -72,9 +72,10 @@ const delay = async (ms: number) =>
     ms > 0 ? setTimeout(() => resolve(), ms) : resolve()
   );
 
-export const getItemsFromSourceTable = async (
+export const getItemsFromTable = async (
   itemStream: Transform,
-  config: Config,
+  tableName: string,
+  dynamoDB: ReturnType<typeof getDynamoDB>,
   options: {
     limit: number | null;
     throttle: number;
@@ -87,9 +88,9 @@ export const getItemsFromSourceTable = async (
 ): Promise<void> =>
   new Promise(
     (resolve: (object: {count: number; limited: boolean}) => void, reject) =>
-      getDynamoDB('source', config).scan(
+      dynamoDB.scan(
         {
-          TableName: config.source.tableName,
+          TableName: tableName,
           ExclusiveStartKey: startKey,
           ConsistentRead: true,
           Limit: options.limit || undefined,
@@ -114,9 +115,10 @@ export const getItemsFromSourceTable = async (
             return resolve({count: totalCount + Count, limited: overLimit});
           } else {
             await delay(options.throttle);
-            return getItemsFromSourceTable(
+            return getItemsFromTable(
               itemStream,
-              config,
+              tableName,
+              dynamoDB,
               options,
               totalCount + Count,
               LastEvaluatedKey
@@ -127,34 +129,35 @@ export const getItemsFromSourceTable = async (
   )
     .then(({count, limited}) => {
       console.debug(
-        `Scanned table ${config.source.tableName} (${count} items${
+        `Scanned table ${tableName} (${count} items${
           limited ? `, result limited to ${options.limit}` : ''
         })`
       );
     })
     .catch(e => {
-      console.debug('Failed to scan table', config.source.tableName);
+      console.debug('Failed to scan table', tableName);
       itemStream.write(e);
     })
     .finally(() => {
       itemStream.end();
     });
 
-export const copyItemsToTemporaryTable = async (
+export const insertItemsToTable = async (
   allItems: DynamoDB.ItemList,
-  config: Config
+  targetTableName: string,
+  dynamoDB: ReturnType<typeof getDynamoDB>
 ): Promise<void> =>
   Promise.all(
     // AWS Supports at most 25 items per chunk
     lodashChunk(allItems, 25).map(
       async items =>
         new Promise((resolve: () => void, reject) =>
-          getDynamoDB('local', config).transactWriteItems(
+          dynamoDB.transactWriteItems(
             {
               TransactItems: items.map(item => ({
                 Put: {
                   Item: item,
-                  TableName: config.localConfig.sourceTableName,
+                  TableName: targetTableName,
                 },
               })),
             },
@@ -169,13 +172,5 @@ export const copyItemsToTemporaryTable = async (
         )
     )
   ).then(() => {
-    console.log(
-      'Copied',
-      allItems.length,
-      'to',
-      config.localConfig.sourceTableName,
-      '(localhost) from',
-      config.source.tableName,
-      '(' + config.source.region + ')'
-    );
+    console.log('Copied', allItems.length, 'items to', targetTableName);
   });
