@@ -6,10 +6,16 @@ type RequiredIndexType = {
   Projection: Projection;
 };
 
+export const delay = async (ms: number) =>
+  new Promise(resolve =>
+    ms > 0 ? setTimeout(() => resolve(), ms) : resolve()
+  );
+
 // FIXME: Use correct ProvisionedThroughput
 const parseIndexResponse = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  indexes: undefined | Array<Partial<RequiredIndexType> & {[x: string]: any}>
+  indexes: undefined | Array<Partial<RequiredIndexType> & {[x: string]: any}>,
+  billingMode: 'PROVISIONED' | 'PAY_PER_REQUEST' | undefined
 ): RequiredIndexType[] | undefined => {
   return indexes
     ? indexes.map(
@@ -24,12 +30,12 @@ const parseIndexResponse = (
             Projection,
           };
 
-          return ProvisionedThroughput
+          return ProvisionedThroughput && billingMode === 'PROVISIONED'
             ? {
                 ...index,
                 ProvisionedThroughput: {
-                  ReadCapacityUnits: 1000,
-                  WriteCapacityUnits: 1000,
+                  ReadCapacityUnits: ProvisionedThroughput.ReadCapacityUnits,
+                  WriteCapacityUnits: ProvisionedThroughput.WriteCapacityUnits,
                 },
               }
             : index;
@@ -49,19 +55,32 @@ export const convertDescriptionToInput = <
   if (!tableDescription.AttributeDefinitions || !tableDescription.KeySchema) {
     throw new Error('No attribute definitions or key schema in table');
   }
+
+  const billingMode = ((tableDescription.BillingModeSummary &&
+    tableDescription.BillingModeSummary.BillingMode) ||
+    undefined) as 'PROVISIONED' | 'PAY_PER_REQUEST' | undefined;
+
   return {
     AttributeDefinitions: tableDescription.AttributeDefinitions,
     TableName: temporaryTableName,
     KeySchema: tableDescription.KeySchema,
     LocalSecondaryIndexes: parseIndexResponse(
-      tableDescription.LocalSecondaryIndexes
+      tableDescription.LocalSecondaryIndexes,
+      billingMode
     ),
     GlobalSecondaryIndexes: parseIndexResponse(
-      tableDescription.GlobalSecondaryIndexes
+      tableDescription.GlobalSecondaryIndexes,
+      billingMode
     ),
-    ProvisionedThroughput: {
-      ReadCapacityUnits: 20000,
-      WriteCapacityUnits: 20000,
-    },
+    BillingMode: billingMode,
+    ProvisionedThroughput:
+      billingMode === 'PROVISIONED'
+        ? {
+            ReadCapacityUnits:
+              tableDescription.ProvisionedThroughput?.ReadCapacityUnits || 1,
+            WriteCapacityUnits:
+              tableDescription.ProvisionedThroughput?.WriteCapacityUnits || 1,
+          }
+        : undefined,
   };
 };

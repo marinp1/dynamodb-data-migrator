@@ -234,7 +234,7 @@ yargs
     },
     argv => {
       const startTs = Date.now();
-      console.log('Starting procedure fetch...');
+      console.log('Starting procedure transform...');
       return loadConfigFromFile(argv['config-file'], {skipTarget: true})
         .then(config =>
           procedures.tranformData(c => c, config, {

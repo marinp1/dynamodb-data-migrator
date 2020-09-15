@@ -3,27 +3,29 @@ import {DynamoDB} from 'aws-sdk';
 import {convertDescriptionToInput} from './utils';
 
 import {Config} from './types';
-
-import {
-  describeTable,
-  deleteTemporaryTable,
-  createTemporaryTable,
-  getItemsFromTable,
-  insertItemsToTable,
-} from './operations';
 import {getDynamoDB} from './databases';
+
+import tableOperations from './operations';
 
 export const initialiseTables = async (
   config: Config,
   options: {useSourceSchema: boolean}
 ) => {
+  const sourceDynamoDB = getDynamoDB('source', config);
+  const localDynamoDB = getDynamoDB('local', config);
+  const targetDynamoDB = getDynamoDB('target', config);
+
   // Delete local temporary tables
-  await deleteTemporaryTable(config.localConfig.sourceTableName, config);
-  await deleteTemporaryTable(config.localConfig.targetTableName, config);
+  await tableOperations.delete(localDynamoDB)(
+    config.localConfig.sourceTableName
+  );
+  await tableOperations.delete(localDynamoDB)(
+    config.localConfig.targetTableName
+  );
 
   // 1. Get table descriptions
   const sourceTableInput = convertDescriptionToInput(
-    await describeTable('source', config),
+    await tableOperations.describe(sourceDynamoDB)(config.source.tableName),
     config.localConfig.sourceTableName
   );
 
@@ -35,14 +37,19 @@ export const initialiseTables = async (
   const targetTableInput = options.useSourceSchema
     ? {...sourceTableInput, TableName: config.localConfig.targetTableName}
     : convertDescriptionToInput(
-        config.target ? await describeTable('target', config) : null,
+        config.target
+          ? await tableOperations.describe(targetDynamoDB)(
+              config.target.tableName
+            )
+          : null,
         config.localConfig.targetTableName
       );
 
   // 2. Create tamporary tables
-  await createTemporaryTable(sourceTableInput, config);
-  if (targetTableInput !== null)
-    await createTemporaryTable(targetTableInput, config);
+  await tableOperations.create(localDynamoDB)(sourceTableInput);
+  if (targetTableInput !== null) {
+    await tableOperations.create(localDynamoDB)(targetTableInput);
+  }
 };
 
 export const copyFromSourceToTemporary = async (
@@ -82,7 +89,7 @@ export const copyFromSourceToTemporary = async (
     itemStream.on('data', (chunk: DynamoDB.ItemList) => {
       itemCount += chunk.length;
       if (!options.dryrun) {
-        insertItemsToTable(chunk, targetTable, localDynamoDB);
+        tableOperations.write(localDynamoDB)(chunk, targetTable);
       } else {
         console.log(`-- Make call with ${chunk.length} to ${targetTable}`);
       }
@@ -101,7 +108,7 @@ export const copyFromSourceToTemporary = async (
       return resolve();
     });
 
-    getItemsFromTable(itemStream, sourceTable, sourceDynamoDB, {
+    tableOperations.scanToStream(sourceDynamoDB)(itemStream, sourceTable, {
       limit: options.limit,
       throttle: options.throttle,
     });
@@ -143,11 +150,7 @@ export const tranformData = (
       itemCount += chunk.length;
       if (!options.dryrun) {
         const transformedChunk = chunk.map(tranformFunction);
-        insertItemsToTable(
-          transformedChunk,
-          config.localConfig.targetTableName,
-          localDynamoDB
-        );
+        tableOperations.write(localDynamoDB)(transformedChunk, targetTable);
       } else {
         console.log(`-- Make call with ${chunk.length} to ${targetTable}`);
       }
@@ -166,6 +169,6 @@ export const tranformData = (
       return resolve();
     });
 
-    getItemsFromTable(itemStream, sourceTable, localDynamoDB);
+    tableOperations.scanToStream(localDynamoDB)(itemStream, sourceTable);
   });
 };
