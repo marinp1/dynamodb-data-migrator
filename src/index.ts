@@ -138,20 +138,42 @@ yargs
         },
       };
 
+      const useSourceSchemaAsTarget = !!argv['use-source-schema'];
+      const createTargetSchema =
+        useSourceSchemaAsTarget || config.target !== null;
+
       return tableOperations(config)
         .then(operations =>
-          procedures.initializeLocal(
-            operations,
-            {
-              sourceTableName: config.source.tableName,
-              targetTableName: config.target ? config.target.tableName : null,
-              localSourceTableName: config.localConfig.sourceTableName,
-              localTargetTableName: config.localConfig.targetTableName,
-            },
-            {
-              useSourceSchema: argv['use-source-schema'],
-            }
-          )
+          procedures
+            .deleteAndCreate(operations, {
+              source: {
+                region: 'source',
+                tableName: config.source.tableName,
+              },
+              target: {
+                region: 'local',
+                tableName: config.localConfig.sourceTableName,
+              },
+            })
+            .then(() =>
+              createTargetSchema
+                ? procedures.deleteAndCreate(operations, {
+                    source: useSourceSchemaAsTarget
+                      ? {
+                          region: 'source',
+                          tableName: config.source.tableName,
+                        }
+                      : {
+                          region: 'target',
+                          tableName: config.target!.tableName,
+                        },
+                    target: {
+                      region: 'local',
+                      tableName: config.localConfig.targetTableName,
+                    },
+                  })
+                : Promise.resolve()
+            )
         )
         .then(() => saveConfigToFile(config))
         .then(() => {
