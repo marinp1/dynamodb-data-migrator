@@ -2,31 +2,33 @@ import through2 from 'through2';
 import {DynamoDB} from 'aws-sdk';
 import {convertDescriptionToInput} from './utils';
 
-import {Config} from './types';
-import {getDynamoDB} from './databases';
-
-import tableOperations from './operations';
+import {Operations, RegionType} from './types';
 
 export const initialiseTables = async (
-  config: Config,
+  tableOperations: Record<RegionType, ReturnType<Operations>>,
+  parameters: {
+    sourceTableName: string;
+    targetTableName: string | null;
+    localSourceTableName: string;
+    localTargetTableName: string;
+  },
   options: {useSourceSchema: boolean}
 ) => {
-  const sourceDynamoDB = getDynamoDB('source', config);
-  const localDynamoDB = getDynamoDB('local', config);
-  const targetDynamoDB = getDynamoDB('target', config);
+  const {
+    sourceTableName,
+    targetTableName,
+    localSourceTableName,
+    localTargetTableName,
+  } = parameters;
 
   // Delete local temporary tables
-  await tableOperations.delete(localDynamoDB)(
-    config.localConfig.sourceTableName
-  );
-  await tableOperations.delete(localDynamoDB)(
-    config.localConfig.targetTableName
-  );
+  await tableOperations.local.delete(localSourceTableName);
+  await tableOperations.local.delete(localTargetTableName);
 
   // 1. Get table descriptions
   const sourceTableInput = convertDescriptionToInput(
-    await tableOperations.describe(sourceDynamoDB)(config.source.tableName),
-    config.localConfig.sourceTableName
+    await tableOperations.source.describe(sourceTableName),
+    localSourceTableName
   );
 
   if (sourceTableInput === null) {
@@ -35,40 +37,37 @@ export const initialiseTables = async (
 
   // Target table description can be null
   const targetTableInput = options.useSourceSchema
-    ? {...sourceTableInput, TableName: config.localConfig.targetTableName}
+    ? {...sourceTableInput, TableName: localTargetTableName}
     : convertDescriptionToInput(
-        config.target
-          ? await tableOperations.describe(targetDynamoDB)(
-              config.target.tableName
-            )
+        targetTableName
+          ? await tableOperations.target.describe(targetTableName)
           : null,
-        config.localConfig.targetTableName
+        localTargetTableName
       );
 
   // 2. Create tamporary tables
-  await tableOperations.create(localDynamoDB)(sourceTableInput);
+  await tableOperations.local.create(sourceTableInput);
   if (targetTableInput !== null) {
-    await tableOperations.create(localDynamoDB)(targetTableInput);
+    await tableOperations.local.create(targetTableInput);
   }
 };
 
-export const copyFromSourceToTemporary = async (
-  config: Config,
-  options: {
-    limit: number | null;
+export const copyFromSourceToTarget = async (
+  tableOperations: Record<RegionType, ReturnType<Operations>>,
+  parameters: {
+    source: {region: RegionType; tableName: string};
+    target: {region: RegionType; tableName: string};
+    tranformFunction?: (item: DynamoDB.AttributeMap) => DynamoDB.AttributeMap;
+  },
+  options: Partial<{
+    limit: number;
     truncate: boolean;
     dryrun: boolean;
     throttle: number;
-  } = {
-    limit: null,
-    truncate: false,
-    dryrun: true,
-    throttle: 0,
-  }
+  }>
 ) => {
   return new Promise((resolve, reject) => {
-    const sourceTable = config.source.tableName;
-    const targetTable = config.localConfig.sourceTableName;
+    const {source, target, tranformFunction} = parameters;
 
     if (options.dryrun) {
       console.log('DRY-RUN --- THE FOLLOWING OPERATIONS ARE TO BE DONE:');
@@ -78,20 +77,30 @@ export const copyFromSourceToTemporary = async (
 
     if (options.truncate) {
       if (options.dryrun) {
-        console.log(`-- Empty all content from ${targetTable}`);
+        console.log(`-- Empty all content from ${target.tableName}`);
+        if (tranformFunction) {
+          console.log(
+            '-- Executing the following transformation:',
+            JSON.stringify(tranformFunction.prototype)
+          );
+        }
       }
     }
 
     let itemCount = 0;
-    const sourceDynamoDB = getDynamoDB('source', config);
-    const localDynamoDB = getDynamoDB('local', config);
 
     itemStream.on('data', (chunk: DynamoDB.ItemList) => {
       itemCount += chunk.length;
       if (!options.dryrun) {
-        tableOperations.write(localDynamoDB)(chunk, targetTable);
+        const transformedChunk = tranformFunction
+          ? chunk.map(tranformFunction)
+          : chunk;
+        tableOperations[target.region].write(
+          transformedChunk,
+          target.tableName
+        );
       } else {
-        console.log(`-- Make call with ${chunk.length} to ${targetTable}`);
+        console.log(`-- Make call with ${chunk.length} to ${target.tableName}`);
       }
     });
 
@@ -102,73 +111,15 @@ export const copyFromSourceToTemporary = async (
 
     itemStream.on('end', () => {
       if (options.dryrun) {
-        console.log(`-- Copy ${itemCount} items to ${targetTable}`);
+        console.log(`-- Copy ${itemCount} items to ${target.tableName}`);
         console.log('Run with flag --no-dry-run to run the previous steps');
       }
       return resolve();
     });
 
-    tableOperations.scanToStream(sourceDynamoDB)(itemStream, sourceTable, {
+    tableOperations[source.region].scanToStream(itemStream, source.tableName, {
       limit: options.limit,
       throttle: options.throttle,
     });
-  });
-};
-
-export const tranformData = (
-  tranformFunction: (item: DynamoDB.AttributeMap) => DynamoDB.AttributeMap,
-  config: Config,
-  options: {
-    truncate: boolean;
-    dryrun: boolean;
-  }
-) => {
-  return new Promise((resolve, reject) => {
-    const sourceTable = config.localConfig.sourceTableName;
-    const targetTable = config.localConfig.targetTableName;
-
-    if (options.dryrun) {
-      console.log('DRY-RUN --- THE FOLLOWING OPERATIONS ARE TO BE DONE:');
-    }
-
-    const itemStream = through2({objectMode: true});
-    const localDynamoDB = getDynamoDB('local', config);
-
-    if (options.truncate) {
-      if (options.dryrun) {
-        console.log(`-- Empty all content from ${targetTable}`);
-        console.log(
-          '-- Executing the following transformation:',
-          JSON.stringify(tranformFunction.prototype)
-        );
-      }
-    }
-
-    let itemCount = 0;
-
-    itemStream.on('data', (chunk: DynamoDB.ItemList) => {
-      itemCount += chunk.length;
-      if (!options.dryrun) {
-        const transformedChunk = chunk.map(tranformFunction);
-        tableOperations.write(localDynamoDB)(transformedChunk, targetTable);
-      } else {
-        console.log(`-- Make call with ${chunk.length} to ${targetTable}`);
-      }
-    });
-
-    itemStream.on('error', e => {
-      console.log(e);
-      return reject(new Error('Failed to scan data from localhost'));
-    });
-
-    itemStream.on('end', () => {
-      if (options.dryrun) {
-        console.log(`-- Copy ${itemCount} items to ${targetTable}`);
-        console.log('Run with flag --no-dry-run to run the previous steps');
-      }
-      return resolve();
-    });
-
-    tableOperations.scanToStream(localDynamoDB)(itemStream, sourceTable);
   });
 };

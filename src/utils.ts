@@ -6,12 +6,11 @@ type RequiredIndexType = {
   Projection: Projection;
 };
 
-export const delay = async (ms: number) =>
+export const delay = async (ms: number | undefined) =>
   new Promise(resolve =>
-    ms > 0 ? setTimeout(() => resolve(), ms) : resolve()
+    ms && ms > 0 ? setTimeout(() => resolve(), ms) : resolve()
   );
 
-// FIXME: Use correct ProvisionedThroughput
 const parseIndexResponse = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   indexes: undefined | Array<Partial<RequiredIndexType> & {[x: string]: any}>,
@@ -44,7 +43,6 @@ const parseIndexResponse = (
     : undefined;
 };
 
-// FIXME: Use correct ProvisionedThroughput
 export const convertDescriptionToInput = <
   T extends AWS.DynamoDB.TableDescription | null
 >(

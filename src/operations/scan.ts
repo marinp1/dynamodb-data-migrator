@@ -6,13 +6,10 @@ export const scanTableToStream = async (
   itemStream: Transform,
   tableName: string,
   dynamoDB: DynamoDB,
-  options: {
-    limit: number | null;
+  options: Partial<{
+    limit: number;
     throttle: number;
-  } = {
-    limit: null,
-    throttle: 0,
-  },
+  }>,
   totalCount = 0,
   startKey: Key | undefined = undefined
 ): Promise<void> =>
@@ -23,7 +20,7 @@ export const scanTableToStream = async (
           TableName: tableName,
           ExclusiveStartKey: startKey,
           ConsistentRead: true,
-          Limit: options.limit || undefined,
+          Limit: options.limit,
         },
         async (err, {Items, Count, LastEvaluatedKey}) => {
           if (err) {

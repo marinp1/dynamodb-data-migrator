@@ -1,3 +1,5 @@
+import {getTableOperations} from './operations';
+
 export interface AWSConfig {
   profile: string;
   region: string;
@@ -13,3 +15,7 @@ export interface Config {
     endpoint: string;
   };
 }
+
+export type RegionType = 'source' | 'target' | 'local';
+
+export type Operations = ReturnType<typeof getTableOperations>;

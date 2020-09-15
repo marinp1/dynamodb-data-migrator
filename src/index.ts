@@ -1,5 +1,6 @@
 import yargs from 'yargs';
 import * as procedures from './procedures';
+import tableOperations from './operations';
 import {saveConfigToFile, loadConfigFromFile} from './config';
 import {Config} from './types';
 
@@ -14,13 +15,6 @@ interface InitialiseArguments {
   'local-source-tablename': string;
   'local-target-tablename': string;
   'use-source-schema': boolean;
-}
-
-interface MigrationArguments {
-  'config-file': string;
-  'dry-run': boolean;
-  'create-table': boolean;
-  throttle: number;
 }
 
 interface FetchArguments {
@@ -38,8 +32,15 @@ interface TransformArguments {
   truncate: boolean;
 }
 
+interface MigrationArguments {
+  'config-file': string;
+  'dry-run': boolean;
+  'create-table': boolean;
+  throttle: number;
+}
+
 /*
-yargs.command('post', 'post data', yargs => {
+yargs.command('migrate', 'post data', yargs => {
   yargs.option('config-file', {});
   yargs.option('no-dry-run', {});
   yargs.option('throttle-value', {});
@@ -137,8 +138,21 @@ yargs
         },
       };
 
-      return procedures
-        .initialiseTables(config, {useSourceSchema: argv['use-source-schema']})
+      return tableOperations(config)
+        .then(operations =>
+          procedures.initialiseTables(
+            operations,
+            {
+              sourceTableName: config.source.tableName,
+              targetTableName: config.target ? config.target.tableName : null,
+              localSourceTableName: config.localConfig.sourceTableName,
+              localTargetTableName: config.localConfig.targetTableName,
+            },
+            {
+              useSourceSchema: argv['use-source-schema'],
+            }
+          )
+        )
         .then(() => saveConfigToFile(config))
         .then(() => {
           console.log(
@@ -186,12 +200,24 @@ yargs
       console.log('Starting procedure fetch...');
       return loadConfigFromFile(argv['config-file'], {skipTarget: true})
         .then(config =>
-          procedures.copyFromSourceToTemporary(config, {
-            dryrun: argv['dry-run'],
-            limit: argv.limit === -1 ? null : argv.limit,
-            truncate: argv.truncate,
-            throttle: argv.throttle,
-          })
+          tableOperations(config).then(operations =>
+            procedures.copyFromSourceToTarget(
+              operations,
+              {
+                source: {region: 'source', tableName: config.source.tableName},
+                target: {
+                  region: 'local',
+                  tableName: config.localConfig.sourceTableName,
+                },
+              },
+              {
+                dryrun: argv['dry-run'],
+                limit: argv.limit === -1 ? undefined : argv.limit,
+                truncate: argv.truncate,
+                throttle: argv.throttle,
+              }
+            )
+          )
         )
         .then(() => {
           console.log(
@@ -237,10 +263,26 @@ yargs
       console.log('Starting procedure transform...');
       return loadConfigFromFile(argv['config-file'], {skipTarget: true})
         .then(config =>
-          procedures.tranformData(c => c, config, {
-            truncate: argv.truncate,
-            dryrun: argv['dry-run'],
-          })
+          tableOperations(config).then(operations =>
+            procedures.copyFromSourceToTarget(
+              operations,
+              {
+                source: {
+                  region: 'local',
+                  tableName: config.localConfig.sourceTableName,
+                },
+                target: {
+                  region: 'local',
+                  tableName: config.localConfig.targetTableName,
+                },
+                tranformFunction: c => c,
+              },
+              {
+                truncate: argv.truncate,
+                dryrun: argv['dry-run'],
+              }
+            )
+          )
         )
         .then(() => {
           console.log(
