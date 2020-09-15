@@ -1,5 +1,5 @@
 import yargs from 'yargs';
-import * as procedures from './procedures';
+import procedures from './procedures';
 import tableOperations from './operations';
 import {saveConfigToFile, loadConfigFromFile} from './config';
 import {Config} from './types';
@@ -140,7 +140,7 @@ yargs
 
       return tableOperations(config)
         .then(operations =>
-          procedures.initialiseTables(
+          procedures.initializeLocal(
             operations,
             {
               sourceTableName: config.source.tableName,
@@ -201,7 +201,7 @@ yargs
       return loadConfigFromFile(argv['config-file'], {skipTarget: true})
         .then(config =>
           tableOperations(config).then(operations =>
-            procedures.copyFromSourceToTarget(
+            procedures.migrateAndTransform(
               operations,
               {
                 source: {region: 'source', tableName: config.source.tableName},
@@ -264,7 +264,7 @@ yargs
       return loadConfigFromFile(argv['config-file'], {skipTarget: true})
         .then(config =>
           tableOperations(config).then(operations =>
-            procedures.copyFromSourceToTarget(
+            procedures.migrateAndTransform(
               operations,
               {
                 source: {
