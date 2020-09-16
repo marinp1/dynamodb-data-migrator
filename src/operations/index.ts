@@ -4,6 +4,7 @@ import {Transform} from 'stream';
 import {createTable} from './create';
 import {deleteTable} from './delete';
 import {describeTable} from './describe';
+import {doesTableExist} from './exists';
 import {writeItemsToTable} from './write';
 import {scanTableToStream} from './scan';
 
@@ -47,6 +48,8 @@ const getDynamoDB = (type: RegionType, config: Config) => {
 };
 
 export const getTableOperations = (config: Config) => (region: RegionType) => ({
+  exists: (tableName: string) =>
+    doesTableExist(tableName, getDynamoDB(region, config)),
   create: (tableInput: DynamoDB.CreateTableInput) =>
     createTable(tableInput, getDynamoDB(region, config)),
   delete: (tableName: string) =>

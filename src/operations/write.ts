@@ -22,6 +22,11 @@ export const writeItemsToTable = async (
             },
             err => {
               if (err) {
+                if (err.code === 'ProvisionedThroughputExceededException') {
+                  return reject(
+                    new Error('ProvisionedThroughputExceededException')
+                  );
+                }
                 console.error(err);
                 return reject(new Error('Failed to copy items to table'));
               }

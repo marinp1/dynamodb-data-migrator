@@ -1,4 +1,4 @@
-import {convertDescriptionToInput} from '../utils';
+import {convertDescriptionToInput, delay} from '../utils';
 import {Operations, RegionType} from '../types';
 
 export const deleteAndCreate = async (
@@ -12,6 +12,13 @@ export const deleteAndCreate = async (
 
   // Delete table
   await tableOperations[target.region].delete(target.tableName);
+  let tableDeleted = false;
+  while (!tableDeleted) {
+    await delay(500);
+    tableDeleted = !(await tableOperations[target.region].exists(
+      target.tableName
+    ));
+  }
 
   // Get table description & override name in schema
   const tableInput = convertDescriptionToInput(
@@ -25,4 +32,11 @@ export const deleteAndCreate = async (
 
   // Create table
   await tableOperations[target.region].create(tableInput);
+  let tableCreated = false;
+  while (!tableCreated) {
+    await delay(500);
+    tableCreated = await tableOperations[target.region].exists(
+      target.tableName
+    );
+  }
 };

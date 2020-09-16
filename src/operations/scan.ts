@@ -41,6 +41,11 @@ export const scanTableToStream = async (
           if (LastEvaluatedKey === undefined || overLimit) {
             return resolve({count: totalCount + Count, limited: overLimit});
           } else {
+            if (options.throttle && options.throttle > 0) {
+              console.log(
+                `Throttling next call ${options.throttle} milliseconds`
+              );
+            }
             await delay(options.throttle);
             return scanTableToStream(
               itemStream,

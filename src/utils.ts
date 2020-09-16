@@ -13,8 +13,7 @@ export const delay = async (ms: number | undefined) =>
 
 const parseIndexResponse = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  indexes: undefined | Array<Partial<RequiredIndexType> & {[x: string]: any}>,
-  billingMode: 'PROVISIONED' | 'PAY_PER_REQUEST' | undefined
+  indexes: undefined | Array<Partial<RequiredIndexType> & {[x: string]: any}>
 ): RequiredIndexType[] | undefined => {
   return indexes
     ? indexes.map(
@@ -29,7 +28,7 @@ const parseIndexResponse = (
             Projection,
           };
 
-          return ProvisionedThroughput && billingMode === 'PROVISIONED'
+          return ProvisionedThroughput
             ? {
                 ...index,
                 ProvisionedThroughput: {
@@ -63,16 +62,14 @@ export const convertDescriptionToInput = <
     TableName: temporaryTableName,
     KeySchema: tableDescription.KeySchema,
     LocalSecondaryIndexes: parseIndexResponse(
-      tableDescription.LocalSecondaryIndexes,
-      billingMode
+      tableDescription.LocalSecondaryIndexes
     ),
     GlobalSecondaryIndexes: parseIndexResponse(
-      tableDescription.GlobalSecondaryIndexes,
-      billingMode
+      tableDescription.GlobalSecondaryIndexes
     ),
     BillingMode: billingMode,
     ProvisionedThroughput:
-      billingMode === 'PROVISIONED'
+      billingMode !== 'PAY_PER_REQUEST'
         ? {
             ReadCapacityUnits:
               tableDescription.ProvisionedThroughput?.ReadCapacityUnits || 1,
