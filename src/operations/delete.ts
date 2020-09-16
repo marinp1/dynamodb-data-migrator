@@ -10,7 +10,7 @@ export const deleteTable = async (
         console.error(err);
         return reject(new Error('Temporary table deletion failed!'));
       }
-      console.log('Deleted temporary table', tableName);
+      console.log('Deleted table', tableName);
       return resolve();
     })
   );

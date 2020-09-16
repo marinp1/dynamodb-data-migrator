@@ -10,7 +10,7 @@ export const createTable = async (
         console.error(err);
         return reject(new Error('Failed to create table'));
       }
-      console.log('Created temporary table', tableInput.TableName);
+      console.log('Created table', tableInput.TableName);
       return resolve();
     })
   );

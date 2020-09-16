@@ -1,16 +1,13 @@
 import yargs from 'yargs';
-import {InitialiseArguments, FetchArguments, TransformArguments} from './types';
-
-/*
-yargs.command('migrate', 'post data', yargs => {
-  yargs.option('config-file', {});
-  yargs.option('no-dry-run', {});
-  yargs.option('throttle-value', {});
-});
-*/
+import {
+  InitialiseArguments,
+  FetchArguments,
+  TransformArguments,
+  MigrationArguments,
+} from './types';
 
 const generateBuilderAndHandler = async (
-  command: 'initialize' | 'fetch' | 'transform'
+  command: 'initialize' | 'fetch' | 'transform' | 'migrate'
 ) => ({
   builder: await import(`./commands/${command}/builder`).then(
     res => res.default
@@ -22,10 +19,14 @@ const generateBuilderAndHandler = async (
       .then(res => res.default(args))
       .then(() => {
         console.log(
-          'Procedure completed in',
+          'Command completed in',
           ((Date.now() - startTs) / 1000).toFixed(2),
           'seconds'
         );
+      })
+      .catch(e => {
+        console.error(e);
+        console.log('Command failed!');
       });
   },
 });
@@ -48,6 +49,11 @@ const generateBuilderAndHandler = async (
       command: 'transform',
       describe: 'run transformation from data',
       ...(await generateBuilderAndHandler('transform')),
+    })
+    .command<MigrationArguments>({
+      command: 'migrate',
+      describe: 'copy data from local to target',
+      ...(await generateBuilderAndHandler('migrate')),
     })
     .demandCommand(
       1,

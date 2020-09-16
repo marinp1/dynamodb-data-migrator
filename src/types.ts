@@ -48,7 +48,7 @@ export interface TransformArguments {
   truncate: boolean;
 }
 
-interface MigrationArguments {
+export interface MigrationArguments {
   'config-file': string;
   'dry-run': boolean;
   'create-table': boolean;
