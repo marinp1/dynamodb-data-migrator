@@ -1,43 +1,5 @@
 import yargs from 'yargs';
-import procedures from './procedures';
-import tableOperations from './operations';
-import {saveConfigToFile, loadConfigFromFile} from './config';
-import {Config} from './types';
-
-interface InitialiseArguments {
-  'source-profile': string;
-  'source-region': string;
-  'source-table': string;
-  'target-profile': string;
-  'target-region': string;
-  'target-table': string | undefined;
-  'local-dynamodb-endpoint': string;
-  'local-source-tablename': string;
-  'local-target-tablename': string;
-  'use-source-schema': boolean;
-}
-
-interface FetchArguments {
-  'config-file': string;
-  'dry-run': boolean;
-  truncate: boolean;
-  limit: number;
-  throttle: number;
-}
-
-interface TransformArguments {
-  'config-file': string;
-  'transform-file': string;
-  'dry-run': boolean;
-  truncate: boolean;
-}
-
-interface MigrationArguments {
-  'config-file': string;
-  'dry-run': boolean;
-  'create-table': boolean;
-  throttle: number;
-}
+import {InitialiseArguments, FetchArguments, TransformArguments} from './types';
 
 /*
 yargs.command('migrate', 'post data', yargs => {
@@ -47,279 +9,51 @@ yargs.command('migrate', 'post data', yargs => {
 });
 */
 
-yargs
-  .usage('$0 <initialize> [args]')
-  .command<InitialiseArguments>(
-    'initialize',
-    'initialise migration',
-    yargs => {
-      yargs
-        .option('source-profile', {
-          description:
-            'AWS profile to use for fetching, set empty for localhost',
-          alias: 'SP',
-          default: 'localhost',
-          type: 'string',
-        })
-        .option('source-region', {
-          description:
-            'AWS region to use for fetching, set empty for localhost',
-          alias: 'SR',
-          default: 'localhost',
-          type: 'string',
-        })
-        .option('source-table', {
-          description: 'DynamoDB table to fetch data from',
-          alias: 'ST',
-          type: 'string',
-        })
-        .option('target-profile', {
-          description:
-            'AWS profile to use for posting, set empty for localhost',
-          alias: 'TP',
-          default: 'localhost',
-          type: 'string',
-        })
-        .option('target-region', {
-          description: 'AWS region to use for posting, set empty for localhost',
-          alias: 'TR',
-          default: 'localhost',
-          type: 'string',
-        })
-        .option('target-table', {
-          description: 'DynamoDB table to post data to',
-          alias: 'TT',
-          type: 'string',
-        })
-        .option('local-dynamodb-endpoint', {
-          describe: 'dynamob endpoint used for local migration',
-          default: 'http://localhost:8000',
-          type: 'string',
-        })
-        .option('local-source-tablename', {
-          describe:
-            'default name for source temporary table used for migration',
-          default: 'migrator-temp-source',
-          type: 'string',
-        })
-        .option('local-target-tablename', {
-          describe:
-            'default name for source temporary table used for migration',
-          default: 'migrator-temp-target',
-          type: 'string',
-        })
-        .option('use-source-schema', {
-          describe: 'if source table schema should be used for target',
-          default: false,
-          type: 'boolean',
-        })
-        .demandOption('source-table', 'source table name is required');
-    },
-    argv => {
-      const startTs = Date.now();
-      console.log('Starting procedure initialize...');
-      const config: Config = {
-        source: {
-          profile: argv['source-profile'],
-          region: argv['source-region'],
-          tableName: argv['source-table'],
-        },
-        target: argv['target-table']
-          ? {
-              profile: argv['target-profile'],
-              region: argv['target-region'],
-              tableName: argv['target-table'],
-            }
-          : null,
-        localConfig: {
-          endpoint: argv['local-dynamodb-endpoint'],
-          sourceTableName: argv['local-source-tablename'],
-          targetTableName: argv['local-target-tablename'],
-        },
-      };
+const generateBuilderAndHandler = async (
+  command: 'initialize' | 'fetch' | 'transform'
+) => ({
+  builder: await import(`./commands/${command}/builder`).then(
+    res => res.default
+  ),
+  handler: async (args: unknown) => {
+    const startTs = Date.now();
+    console.log(`Running command ${command}...`);
+    return import(`./commands/${command}/handler`)
+      .then(res => res.default(args))
+      .then(() => {
+        console.log(
+          'Procedure completed in',
+          ((Date.now() - startTs) / 1000).toFixed(2),
+          'seconds'
+        );
+      });
+  },
+});
 
-      const useSourceSchemaAsTarget = !!argv['use-source-schema'];
-      const createTargetSchema =
-        useSourceSchemaAsTarget || config.target !== null;
-
-      return tableOperations(config)
-        .then(operations =>
-          procedures
-            .deleteAndCreate(operations, {
-              source: {
-                region: 'source',
-                tableName: config.source.tableName,
-              },
-              target: {
-                region: 'local',
-                tableName: config.localConfig.sourceTableName,
-              },
-            })
-            .then(() =>
-              createTargetSchema
-                ? procedures.deleteAndCreate(operations, {
-                    source: useSourceSchemaAsTarget
-                      ? {
-                          region: 'source',
-                          tableName: config.source.tableName,
-                        }
-                      : {
-                          region: 'target',
-                          tableName: config.target!.tableName,
-                        },
-                    target: {
-                      region: 'local',
-                      tableName: config.localConfig.targetTableName,
-                    },
-                  })
-                : Promise.resolve()
-            )
-        )
-        .then(() => saveConfigToFile(config))
-        .then(() => {
-          console.log(
-            'Procedure completed in',
-            ((Date.now() - startTs) / 1000).toFixed(2),
-            'seconds'
-          );
-        });
-    }
-  )
-  .command<FetchArguments>(
-    'fetch',
-    'fetch data',
-    yargs => {
-      yargs
-        .option('config-file', {
-          description: 'configuration file to use for fetching',
-          required: true,
-          type: 'string',
-        })
-        .option('dry-run', {
-          description: 'run operation',
-          default: true,
-          type: 'boolean',
-        })
-        .option('truncate', {
-          description: 'empty destination table during import',
-          default: false,
-          type: 'boolean',
-        })
-        .option('limit', {
-          description: 'the max number to import (soft limit)',
-          default: -1,
-          type: 'number',
-        })
-        .option('throttle', {
-          description: 'number of milliseconds to wait before each segment',
-          default: 0,
-          type: 'number',
-        })
-        .demandOption('config-file', 'path to configuration file is required');
-    },
-    argv => {
-      const startTs = Date.now();
-      console.log('Starting procedure fetch...');
-      return loadConfigFromFile(argv['config-file'], {skipTarget: true})
-        .then(config =>
-          tableOperations(config).then(operations =>
-            procedures.migrateAndTransform(
-              operations,
-              {
-                source: {region: 'source', tableName: config.source.tableName},
-                target: {
-                  region: 'local',
-                  tableName: config.localConfig.sourceTableName,
-                },
-              },
-              {
-                dryrun: argv['dry-run'],
-                limit: argv.limit === -1 ? undefined : argv.limit,
-                truncate: argv.truncate,
-                throttle: argv.throttle,
-              }
-            )
-          )
-        )
-        .then(() => {
-          console.log(
-            'Procedure completed in',
-            ((Date.now() - startTs) / 1000).toFixed(2),
-            'seconds'
-          );
-        });
-    }
-  )
-  .command<TransformArguments>(
-    'transform',
-    'run transformation from data',
-    yargs => {
-      yargs
-        .option('config-file', {
-          description: 'configuration file to use for fetching',
-          required: true,
-          type: 'string',
-        })
-        /*
-        .option('transform-file', {
-          description: 'file to use for transformation',
-          required: true,
-          type: 'string',
-        })
-        */
-        .option('dry-run', {
-          description: 'run transformation',
-          default: true,
-          type: 'boolean',
-        })
-        .option('truncate', {
-          description: 'empty destination table during import',
-          default: false,
-          type: 'boolean',
-        })
-        .demandOption('config-file', 'path to config file is required');
-      // .demandOption('transform-file', 'path to transform file is required');
-    },
-    argv => {
-      const startTs = Date.now();
-      console.log('Starting procedure transform...');
-      return loadConfigFromFile(argv['config-file'], {skipTarget: true})
-        .then(config =>
-          tableOperations(config).then(operations =>
-            procedures.migrateAndTransform(
-              operations,
-              {
-                source: {
-                  region: 'local',
-                  tableName: config.localConfig.sourceTableName,
-                },
-                target: {
-                  region: 'local',
-                  tableName: config.localConfig.targetTableName,
-                },
-                tranformFunction: c => c,
-              },
-              {
-                truncate: argv.truncate,
-                dryrun: argv['dry-run'],
-              }
-            )
-          )
-        )
-        .then(() => {
-          console.log(
-            'Procedure completed in',
-            ((Date.now() - startTs) / 1000).toFixed(2),
-            'seconds'
-          );
-        });
-    }
-  )
-  .demandCommand(
-    1,
-    1,
-    'see --usage',
-    'only one command can be given at single time'
-  )
-  .help()
-  .alias('help', 'h').argv;
+(async () =>
+  yargs
+    .usage('$0 <command> [args]')
+    .command<InitialiseArguments>({
+      command: 'initialize',
+      aliases: 'init',
+      describe: 'initialise migration',
+      ...(await generateBuilderAndHandler('initialize')),
+    })
+    .command<FetchArguments>({
+      command: 'fetch',
+      describe: 'fetch data',
+      ...(await generateBuilderAndHandler('fetch')),
+    })
+    .command<TransformArguments>({
+      command: 'transform',
+      describe: 'run transformation from data',
+      ...(await generateBuilderAndHandler('transform')),
+    })
+    .demandCommand(
+      1,
+      1,
+      'see --usage',
+      'only one command can be given at single time'
+    )
+    .help()
+    .alias('help', 'h').argv)();
