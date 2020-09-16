@@ -12,12 +12,12 @@ The CLI tool supports four commands, that have to be run in order for the migrat
 
 The tool uses AWS profiles for credentials, so access keys are not supported for the time being.
 
-| n | command   | from             | to     | data types                   | description                                                                     | output                    |   |   |
-|---|-----------|------------------|--------|------------------------------|---------------------------------------------------------------------------------|---------------------------|---|---|
-| 0 | init      | source \| target | local  | schema                       | Initialises local DynamoDB tables with schemas from AWS source & target regions | ddm.\<sourceTableName\>.yml |   |   |
-| 1 | fetch     | source           | local  | items                        | Copies items from source DynamoDB table to local source DynamoDB table          | N/A                       |   |   |
-| 2 | transform | local            | local  | items                        | Copies items from local source DynamoDB table to local target DynamoDB table    | N/A                       |   |   |
-| 3 | migrate   | local            | target | items \| schema (optionally) | Copies items from local target DynamoDB table to target DynamoDB                | N/A                       |   |   |
+| n | command   | from             | to     | data types                   | description                                                                     | output                    |
+|---|-----------|------------------|--------|------------------------------|---------------------------------------------------------------------------------|---------------------------|
+| 0 | init      | source & target | local  | schema                       | Initialize **local** DynamoDB tables | ddm.*\<sourceTableName\>*.yml |
+| 1 | fetch     | source           | local  | items                        | Copy items from **source** table to **local**          | N/A                       |
+| 2 | transform | local            | local  | items                        | Transform items **locally** from source to target    | N/A                       |
+| 3 | migrate   | local            | target | items & schema (optionally) | Copy items from **local** to **target**                | N/A                       |
 
 Run `node ddm-{version}.js -h` for more information about possible commands.
 
