@@ -1,5 +1,6 @@
 /* eslint-disable node/no-unpublished-require */
 const typescript = require('rollup-plugin-typescript2');
+const dynamicImportVariables = require('rollup-plugin-dynamic-import-variables');
 const {terser} = require('rollup-plugin-terser');
 
 const pkg = require('./package.json');
@@ -9,6 +10,7 @@ module.exports = {
   output: [
     {
       format: 'cjs',
+      inlineDynamicImports: true,
     },
   ],
   external: [...Object.keys(pkg.dependencies || {})],
@@ -16,6 +18,7 @@ module.exports = {
     typescript({
       typescript: require('typescript'),
     }),
+    dynamicImportVariables(),
     terser(), // minifies generated bundles
   ],
 };

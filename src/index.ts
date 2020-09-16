@@ -9,13 +9,13 @@ import {
 const generateBuilderAndHandler = async (
   command: 'initialize' | 'fetch' | 'transform' | 'migrate'
 ) => ({
-  builder: await import(`./commands/${command}/builder`).then(
+  builder: await import(`./commands/${command}/builder.ts`).then(
     res => res.default
   ),
   handler: async (args: unknown) => {
     const startTs = Date.now();
     console.log(`Running command ${command}...`);
-    return import(`./commands/${command}/handler`)
+    return import(`./commands/${command}/handler.ts`)
       .then(res => res.default(args))
       .then(() => {
         console.log(
