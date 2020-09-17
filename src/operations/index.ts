@@ -56,8 +56,12 @@ export const getTableOperations = (config: Config) => (region: RegionType) => ({
     deleteTable(tableName, getDynamoDB(region, config)),
   describe: (tableName: string) =>
     describeTable(tableName, getDynamoDB(region, config)),
-  write: (items: DynamoDB.ItemList, tableName: string) =>
-    writeItemsToTable(items, tableName, getDynamoDB(region, config)),
+  write: (
+    items: DynamoDB.ItemList,
+    tableName: string,
+    options: Partial<{throttle: number}>
+  ) =>
+    writeItemsToTable(items, tableName, options, getDynamoDB(region, config)),
   scanToStream: (
     streamToPopulate: Transform,
     tableName: string,

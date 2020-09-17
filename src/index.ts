@@ -26,7 +26,7 @@ const generateBuilderAndHandler = async (
       })
       .catch(e => {
         console.error(e);
-        console.log('Command failed!');
+        throw new Error('Command failed!');
       });
   },
 });
