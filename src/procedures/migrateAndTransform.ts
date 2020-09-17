@@ -1,8 +1,8 @@
 import through2 from 'through2';
 import {DynamoDB} from 'aws-sdk';
-
 import {Operations, RegionType} from '../types';
 import {delay} from '../utils';
+import {ERROR_CODES} from '../enums';
 
 export const migrateAndTransform = async (
   tableOperations: Record<RegionType, ReturnType<Operations>>,
@@ -77,31 +77,40 @@ export const migrateAndTransform = async (
 
     let itemCount = 0;
 
-    itemStream.on('data', (chunk: DynamoDB.ItemList) => {
-      itemCount += chunk.length;
-      if (!options.dryrun) {
-        const transformedChunk = tranformFunction
-          ? chunk.map(tranformFunction)
-          : chunk;
+    itemStream.on('data', async (allItems: DynamoDB.ItemList) => {
+      console.log('Received scan result with', allItems.length, 'items');
+      itemCount += allItems.length;
 
-        tableOperations[target.region]
-          .write(transformedChunk, target.tableName)
-          .then(() => {
-            //console.log('');
-          })
-          .catch(e => {
-            if (e.message === 'ProvisionedThroughputExceededException') {
-              return reject(
-                'Provisioned throughput exceeded, consider using throttle parameter'
-              );
-            } else {
-              return reject(
-                'Failed to write items to table, please try again!'
-              );
+      if (!options.dryrun) {
+        const transformedItems = tranformFunction
+          ? allItems.map(tranformFunction)
+          : allItems;
+
+        try {
+          const insertedItems = await tableOperations[target.region].write(
+            transformedItems,
+            target.tableName,
+            {
+              throttle: options.throttle,
             }
-          });
+          );
+          console.log(
+            insertedItems.length,
+            'items inserted into',
+            target.tableName
+          );
+        } catch (e) {
+          if (e.message === ERROR_CODES.PROVISIONED_THROUGHPUT) {
+            return reject(
+              'Provisioned throughput exceeded, consider using throttle parameter'
+            );
+          } else {
+            return reject('Failed to write items to table, please try again!');
+          }
+        }
       } else {
-        console.log(`-- Make call with ${chunk.length} to ${target.tableName}`);
+        console.log(`-- Insert ${allItems.length} to ${target.tableName}`);
+        return resolve();
       }
     });
 
@@ -113,16 +122,18 @@ export const migrateAndTransform = async (
     itemStream.on('end', () => {
       if (options.dryrun) {
         console.log(`-- Copy ${itemCount} items to ${target.tableName}`);
-        console.log('Run with flag --no-dry-run to run the previous steps');
       }
     });
 
-    return tableOperations[source.region]
+    tableOperations[source.region]
       .scanToStream(itemStream, source.tableName, {
         limit: options.limit,
         throttle: options.throttle,
       })
-      .then(() => resolve())
       .catch(() => reject(new Error('Failed to scan to stream')));
+  }).then(() => {
+    if (options.dryrun) {
+      console.log('Run with flag --no-dry-run to run the previous steps');
+    }
   });
 };
